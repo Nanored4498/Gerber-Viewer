@@ -27,7 +27,11 @@ find_package(glfw3 3.3 REQUIRED)
 # Files #
 #-------#
 
-set(SRCS test.cpp glad.c)
+set(SRCS
+	main.cpp
+	reader.cpp
+	glad.c
+)
 
 #----------#
 # INCLUDES #
