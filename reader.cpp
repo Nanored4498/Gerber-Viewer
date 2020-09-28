@@ -14,6 +14,36 @@ void skipLine(istream &in, char end='\n') {
 	while(c != end && c != EOF) in.get(c);
 }
 
+Object createObj(const vector<float> vertices, const vector<uint> indices) {
+	uint VAO, VBO, EBO;
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO);
+
+	glGenBuffers(1, &VBO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices.size(), vertices.data(), GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), 0);
+	glEnableVertexAttribArray(0);
+
+	glGenBuffers(1, &EBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint)*indices.size(), indices.data(), GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	float x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
+	for(int i = 0; i < vertices.size(); i += 3) {
+		x0 = min(x0, vertices[i]);
+		x1 = max(x1, vertices[i]);
+		y0 = min(y0, vertices[i+1]);
+		y1 = max(y1, vertices[i+1]);
+	}
+
+	return {VAO, VBO, EBO, indices.size(), x0, x1, y0, y1};
+}
+
 Object readXNC(istream &in) {
 	float SCALE = 1.0;
 	float tools[100];
@@ -95,39 +125,22 @@ Object readXNC(istream &in) {
 		in >> s;
 	}
 
-	uint VAO, VBO, EBO;
-	glGenVertexArrays(1, &VAO);
-	glBindVertexArray(VAO);
-
-	glGenBuffers(1, &VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices.size(), vertices.data(), GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), 0);
-	glEnableVertexAttribArray(0);
-
-	glGenBuffers(1, &EBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint)*indices.size(), indices.data(), GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	return {VAO, VBO, EBO, indices.size()};
+	return createObj(vertices, indices);
 }
 
 struct Aperture {
 	string temp_name;
-	vector<double> parameters;
+	vector<float> parameters;
 };
 
 Object readGerber(istream &in) {
-	double SCALE = 1.0;
+	float SCALE = 1.0;
 	bool dark = true;
 	map<int, Aperture> apertures;
 	int ap_id = -1;
 	bool in_region = false;
 	bool circular = false, clockwise;
-	double cX, cY;
+	float cX, cY;
 	vector<float> vertices;
 	vector<uint> indices;
 
@@ -161,7 +174,7 @@ Object readGerber(istream &in) {
 				while(s[param_ind] != '*') {
 					size_t start = ++ param_ind;
 					while(s[param_ind] != 'X' && s[param_ind] != '*') ++ param_ind;
-					ap.parameters.push_back(stod(s.substr(start, param_ind-start)));
+					ap.parameters.push_back(stof(s.substr(start, param_ind-start)));
 				}
 				apertures[aper_id] = ap;
 			}
@@ -180,8 +193,8 @@ Object readGerber(istream &in) {
 		else if(s == "G37*") in_region = false;
 		else if(s.size() >= 8 && s[0] == 'X' && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
 			size_t y_ind = s.find('Y');
-			double x = stod(s.substr(1, y_ind-1));
-			double y = stod(s.substr(y_ind+1, s.size()-5-y_ind));
+			float x = stof(s.substr(1, y_ind-1));
+			float y = stof(s.substr(y_ind+1, s.size()-5-y_ind));
 			char d = s[s.size()-2];
 			if(d == '1') {
 				// interpolation
@@ -193,23 +206,6 @@ Object readGerber(istream &in) {
 		} else cerr << "Unknown word: " << s << endl;
 		in >> s;
 	}
-
-	uint VAO, VBO, EBO;
-	glGenVertexArrays(1, &VAO);
-	glBindVertexArray(VAO);
-
-	glGenBuffers(1, &VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices.size(), vertices.data(), GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), 0);
-	glEnableVertexAttribArray(0);
-
-	glGenBuffers(1, &EBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint)*indices.size(), indices.data(), GL_STATIC_DRAW);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	return {VAO, VBO, EBO, indices.size()};
+	
+	return createObj(vertices, indices);
 }

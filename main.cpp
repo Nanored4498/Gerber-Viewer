@@ -10,8 +10,18 @@
 using namespace std;
 
 const int WIDTH = 1024, HEIGHT = 768;
+float x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
+uint shaderProgram;
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
+	int centerLocation = glGetUniformLocation(shaderProgram, "center");
+	int ratioLocation = glGetUniformLocation(shaderProgram, "ratio");
+	int zoomLocation = glGetUniformLocation(shaderProgram, "zoom");
+	float ratio = (float) width / (float) height;
+	float zoom = max(x1-x0, (y1-y0)*ratio) / 1.8f;
+	glUniform2f(centerLocation, (x0+x1)/2.f, (y0+y1)/2.f);
+	glUniform1f(ratioLocation, ratio);
+	glUniform1f(zoomLocation, zoom);
 	glViewport(0, 0, width, height);
 }
 
@@ -40,9 +50,6 @@ int main(int argc, char* argv[]) {
 		cerr << "Failed to initialize GLAD" << endl;
 		return 1;
 	}
-	glViewport(0, 0, WIDTH, HEIGHT);
-	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-	glClearColor(0.2, 0.3, 0.3, 1.0);
 	int succes;
 	char infoLog[512];
 	
@@ -51,8 +58,11 @@ int main(int argc, char* argv[]) {
 	const char *vertexShaderSource =
 		"#version 330 core\n"
 		"layout (location = 0) in vec3 pos;\n"
+		"uniform vec2 center;\n"
+		"uniform float ratio;\n"
+		"uniform float zoom;\n"
 		"void main() {\n"
-		"	gl_Position = vec4((pos.x-135.)/40., (pos.y+110.)/30., 0., 1.);\n"
+		"	gl_Position = vec4(pos.x-center.x, (pos.y-center.y) * ratio, 0., zoom);\n"
 		"}";
 	glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
 	glCompileShader(vertexShader);
@@ -81,7 +91,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Shader program
-	uint shaderProgram = glCreateProgram();
+	shaderProgram = glCreateProgram();
 	glAttachShader(shaderProgram, vertexShader);
 	glAttachShader(shaderProgram, fragmentShader);
 	glLinkProgram(shaderProgram);
@@ -108,6 +118,16 @@ int main(int argc, char* argv[]) {
 			in.close();
 		} else cerr << "Can't open file: " << argv[i] << endl;
 	}
+	for(const Object &o : objects) {
+		x0 = min(x0, o.x0);
+		x1 = max(x1, o.x1);
+		y0 = min(y0, o.y0);
+		y1 = max(y1, o.y1);
+	}
+
+	framebufferSizeCallback(window, WIDTH, HEIGHT);
+	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+	glClearColor(0.2, 0.3, 0.3, 1.0);
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
