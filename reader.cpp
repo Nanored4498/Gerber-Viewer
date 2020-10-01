@@ -34,7 +34,7 @@ Object createObj(const vector<float> vertices, const vector<uint> indices) {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	float x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
-	for(int i = 0; i < vertices.size(); i += 3) {
+	for(int i = 0; i < (int) vertices.size(); i += 3) {
 		x0 = min(x0, vertices[i]);
 		x1 = max(x1, vertices[i]);
 		y0 = min(y0, vertices[i+1]);
@@ -103,12 +103,12 @@ Object readXNC(istream &in) {
 			else {
 				float x = stof(s.substr(1, i-1)) * SCALE;
 				float y = stof(s.substr(i+1)) * SCALE;
-				float d = tools[T];
+				float r = .5 * tools[T];
 				uint ind = vertices.size() / 3;
 				for(int i = 0; i < 24; ++i) {
 					float a = 2*M_PI*i/24;
-					vertices.push_back(x + d*cos(a));
-					vertices.push_back(y + d*sin(a));
+					vertices.push_back(x + r*cos(a));
+					vertices.push_back(y + r*sin(a));
 					vertices.push_back(0);
 					indices.push_back(ind + i);
 					indices.push_back(ind + ((i+1) % 24));
@@ -134,13 +134,13 @@ struct Aperture {
 };
 
 Object readGerber(istream &in) {
-	float SCALE = 1.0;
+	float SCALE = 1.0, DIV_X = 1.0, DIV_Y = 1.0;
 	bool dark = true;
 	map<int, Aperture> apertures;
 	int ap_id = -1;
+	char interpolation_mode = 1, quadrant = 0;
 	bool in_region = false;
-	bool circular = false, clockwise;
-	float cX, cY;
+	float cX=0, cY=0;
 	vector<float> vertices;
 	vector<uint> indices;
 
@@ -149,7 +149,12 @@ Object readGerber(istream &in) {
 	while(s != "M02*") {
 		if(s == "G04") skipLine(in, '*');
 		else if(s.size() == 13 && s.substr(0, 6) == "%FSLAX" && s[8] == 'Y' && s[11] == '*' && s[12] == '%') {
-			// this command is not very important
+			if(s[7] == '5') DIV_X = 1e-5;
+			else if(s[7] == '6') DIV_X = 1e-6;
+			else cerr << "X cordinates have to have 5 or 6 digits in the fractional part." << endl;
+			if(s[10] == '5') DIV_Y = 1e-5;
+			else if(s[10] == '6') DIV_Y = 1e-6;
+			else cerr << "X cordinates have to have 5 or 6 digits in the fractional part." << endl;
 		} else if(s.size() == 7 && s.substr(0, 3) == "%MO" && s[5] == '*' && s[6] == '%') {
 			string unit = s.substr(3, 2);
 			if(unit == "MM") SCALE = 1.0;
@@ -176,33 +181,200 @@ Object readGerber(istream &in) {
 					while(s[param_ind] != 'X' && s[param_ind] != '*') ++ param_ind;
 					ap.parameters.push_back(stof(s.substr(start, param_ind-start)));
 				}
-				apertures[aper_id] = ap;
+				int np = ap.parameters.size();
+				bool good = true;
+				if(ap.temp_name == "C") {
+					if(np < 1 || np > 2) {
+						good = false;
+						cerr << "The aperture " << ap_id << " is a circle and need to have 1 or 2 parameters. Not " << np << endl;
+					}
+				} else if(ap.temp_name == "R") {
+					if(np < 2 || np > 3) {
+						good = false;
+						cerr << "The aperture " << ap_id << " is a rectangle and need to have 2 or 3 parameters. Not " << np << endl;
+					}
+				} else if(ap.temp_name == "O") {
+					if(np < 2 || np > 3) {
+						good = false;
+						cerr << "The aperture " << ap_id << " is an obround and need to have 2 or 3 parameters. Not " << np << endl;
+					}
+				} else if(ap.temp_name == "P"s)  {
+					if(np < 2 || np > 4) {
+						good = false;
+						cerr << "The aperture " << ap_id << " is an obround and need to have 2, 3 or 4 parameters. Not " << np << endl;
+					}
+				}
+				if(good) apertures[aper_id] = ap;
 			}
 		} else if(s[0] == 'D' && s.back() == '*') {
 			int id = atoi(s.substr(1, s.size()-2).c_str());
 			if(apertures.count(id)) ap_id = id;
 			else cerr << "The aperture number " << id << " is not defined" << endl;
-		} else if(s == "G01*") circular = false;
-		else if(s == "G02*") {
-			circular = true;
-			clockwise = true;
-		} else if(s == "G03*") {
-			circular = true;
-			clockwise = false;
-		} else if(s == "G36*") in_region = true;
+		} else if(s == "G01*") interpolation_mode = 1;
+		else if(s == "G02*") interpolation_mode = 2;
+		else if(s == "G03*") interpolation_mode = 3;
+		else if(s == "G36*") in_region = true;
 		else if(s == "G37*") in_region = false;
-		else if(s.size() >= 8 && s[0] == 'X' && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
-			size_t y_ind = s.find('Y');
-			float x = stof(s.substr(1, y_ind-1));
-			float y = stof(s.substr(y_ind+1, s.size()-5-y_ind));
-			char d = s[s.size()-2];
-			if(d == '1') {
-				// interpolation
-			} else if(d == '3') {
-				// flash
-			} else if(d != '2') cerr << "Unknown operation: " << d << endl;
-			cX = x;
-			cY = y;
+		else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
+			if(ap_id >= 0) {
+				float x = cX, y = cY;
+				if(s[0] == 'X') {
+					size_t y_ind = s.find('Y');
+					if(y_ind == string::npos) x = stof(s.substr(1, s.size()-5)) * SCALE * DIV_X;
+					else {
+						x = stof(s.substr(1, y_ind-1)) * SCALE * DIV_X;
+						y = stof(s.substr(y_ind+1, s.size()-5-y_ind)) * SCALE * DIV_Y;
+					}
+				} else if(s[0] == 'Y') y = stof(s.substr(1, s.size()-5)) * SCALE * DIV_Y;
+				char d = s[s.size()-2];
+				if(d == '1') {
+					// interpolation
+				} else if(d == '3') {
+					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
+					else {
+						vector<float> &params = apertures[ap_id].parameters;
+						uint ind = vertices.size() / 3;
+						if(apertures[ap_id].temp_name == "C") {
+							float r = .5 * params[0];
+							if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+							for(int i = 0; i < 24; ++i) {
+								float a = 2*M_PI*i/24;
+								vertices.push_back(x + r*cos(a));
+								vertices.push_back(y + r*sin(a));
+								vertices.push_back(0);
+								indices.push_back(ind + i);
+								indices.push_back(ind + ((i+1) % 24));
+								indices.push_back(ind + 24);
+							}
+							vertices.push_back(x);
+							vertices.push_back(y);
+							vertices.push_back(0);
+						} else if(apertures[ap_id].temp_name == "R") {
+							float w = .5*params[0], h = .5*params[1];
+							if(params.size() == 3) cerr << "Warning: holes are not implemented for rectangle" << endl;
+							for(float dx : {-w, w}) for(float dy : {-h, h}) {
+								vertices.push_back(x+dx);
+								vertices.push_back(y+dy);
+								vertices.push_back(0);
+							}
+							indices.push_back(ind);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+3);
+						} else if(apertures[ap_id].temp_name == "O") {
+							float w = .5*params[0], h = .5*params[1];
+							if(params.size() == 3) cerr << "Warning: holes are not implemented for obrounds" << endl;
+							if(w < h) {
+								float h2 = h - w;
+
+								// rectangle
+								for(float dx : {-w, w}) for(float dy : {-h2, h2}) {
+									vertices.push_back(x+dx);
+									vertices.push_back(y+dy);
+									vertices.push_back(0);
+								}
+								indices.push_back(ind);
+								indices.push_back(ind+1);
+								indices.push_back(ind+2);
+								indices.push_back(ind+1);
+								indices.push_back(ind+2);
+								indices.push_back(ind+3);
+
+								// half-circle up
+								float yc = y + h2;
+								ind = vertices.size();
+								for(int i = 0; i <= 12; ++i) {
+									float a = 2*M_PI*i/24;
+									vertices.push_back(x + w*cos(a));
+									vertices.push_back(yc + w*sin(a));
+									vertices.push_back(0);
+									if(i < 12) {
+										indices.push_back(ind + i);
+										indices.push_back(ind + i+1);
+										indices.push_back(ind + 13);
+									}
+								}
+								vertices.push_back(x);
+								vertices.push_back(yc);
+								vertices.push_back(0);
+
+								// half-circle up
+								yc = y - h2;
+								ind = vertices.size();
+								for(int i = 0; i <= 12; ++i) {
+									float a = - 2*M_PI*i/24;
+									vertices.push_back(x + w*cos(a));
+									vertices.push_back(yc + w*sin(a));
+									vertices.push_back(0);
+									if(i < 12) {
+										indices.push_back(ind + i);
+										indices.push_back(ind + i+1);
+										indices.push_back(ind + 13);
+									}
+								}
+								vertices.push_back(x);
+								vertices.push_back(yc);
+								vertices.push_back(0);
+							} else {
+								float w2 = w - h;
+
+								// rectangle
+								for(float dx : {-w2, w2}) for(float dy : {-h, h}) {
+									vertices.push_back(x+dx);
+									vertices.push_back(y+dy);
+									vertices.push_back(0);
+								}
+								indices.push_back(ind);
+								indices.push_back(ind+1);
+								indices.push_back(ind+2);
+								indices.push_back(ind+1);
+								indices.push_back(ind+2);
+								indices.push_back(ind+3);
+
+								// half-circle up
+								float xc = x + w2;
+								ind = vertices.size() / 3;
+								for(int i = 0; i <= 12; ++i) {
+									float a = 2*M_PI*i/24 - M_PI_2;
+									vertices.push_back(xc + h*cos(a));
+									vertices.push_back(y + h*sin(a));
+									vertices.push_back(0);
+									if(i < 12) {
+										indices.push_back(ind + i);
+										indices.push_back(ind + i+1);
+										indices.push_back(ind + 13);
+									}
+								}
+								vertices.push_back(xc);
+								vertices.push_back(y);
+								vertices.push_back(0);
+
+								// half-circle up
+								xc = x - w2;
+								ind = vertices.size() / 3;
+								for(int i = 0; i <= 12; ++i) {
+									float a = 2*M_PI*i/24 + M_PI_2;
+									vertices.push_back(xc + h*cos(a));
+									vertices.push_back(y + h*sin(a));
+									vertices.push_back(0);
+									if(i < 12) {
+										indices.push_back(ind + i);
+										indices.push_back(ind + i+1);
+										indices.push_back(ind + 13);
+									}
+								}
+								vertices.push_back(xc);
+								vertices.push_back(y);
+								vertices.push_back(0);
+							}
+						}
+					}
+				} else if(d != '2') cerr << "Unknown operation: " << d << endl; // D02 is just a move
+				cX = x;
+				cY = y;
+			} else cerr << "No tool selected while executing the command: " << s << endl;
 		} else cerr << "Unknown word: " << s << endl;
 		in >> s;
 	}

@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
 
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-	glClearColor(0.2, 0.3, 0.3, 1.0);
+	glClearColor(0.2, 0.3, 0.2, 1.0);
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
