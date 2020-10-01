@@ -198,7 +198,7 @@ Object readGerber(istream &in) {
 						good = false;
 						cerr << "The aperture " << ap_id << " is an obround and need to have 2 or 3 parameters. Not " << np << endl;
 					}
-				} else if(ap.temp_name == "P"s)  {
+				} else if(ap.temp_name == "P")  {
 					if(np < 2 || np > 4) {
 						good = false;
 						cerr << "The aperture " << ap_id << " is an obround and need to have 2, 3 or 4 parameters. Not " << np << endl;
@@ -228,7 +228,49 @@ Object readGerber(istream &in) {
 				} else if(s[0] == 'Y') y = stof(s.substr(1, s.size()-5)) * SCALE * DIV_Y;
 				char d = s[s.size()-2];
 				if(d == '1') {
-					// interpolation
+					// TODO: Check if we are in region
+					vector<float> &params = apertures[ap_id].parameters;
+					if(apertures[ap_id].temp_name == "C") {
+						if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+						if(interpolation_mode == 1) {
+							float r = .5*params[0];
+							float a0 = atan2(y-cY, x-cX);
+							uint ind = vertices.size() / 3;
+
+							// rectangle
+							float xs[] = {cX, x}, ys[] = {cY, y};
+							for(int i : {0, 1}) for(float s : {-r, r}) {
+									vertices.push_back(xs[i]-s*sin(a0));
+									vertices.push_back(ys[i]+s*cos(a0));
+									vertices.push_back(0);
+								}
+							indices.push_back(ind);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+3);
+
+							// half-circles
+							for(int j : {0, 1}) {
+								ind = vertices.size() / 3;
+								for(int i = 0; i <= 12; ++i) {
+									float a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
+									vertices.push_back(xs[j] + r*cos(a));
+									vertices.push_back(ys[j] + r*sin(a));
+									vertices.push_back(0);
+									if(i < 12) {
+										indices.push_back(ind + i);
+										indices.push_back(ind + i+1);
+										indices.push_back(ind + 13);
+									}
+								}
+								vertices.push_back(xs[j]);
+								vertices.push_back(ys[j]);
+								vertices.push_back(0);
+							}
+						}
+					}
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
 					else {
@@ -266,80 +308,34 @@ Object readGerber(istream &in) {
 						} else if(apertures[ap_id].temp_name == "O") {
 							float w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for obrounds" << endl;
-							if(w < h) {
-								float h2 = h - w;
+							float dhw = abs(h - w);
+							bool vert = h > w;
+							float r = vert ? w : h;
+							float a0 = vert ? M_PI_2 : 0;
 
-								// rectangle
-								for(float dx : {-w, w}) for(float dy : {-h2, h2}) {
+							// rectangle
+							for(float dx : {vert ? -w : -dhw, vert ? w : dhw})
+								for(float dy : {vert ? -dhw : -h, vert ? dhw : h}) {
 									vertices.push_back(x+dx);
 									vertices.push_back(y+dy);
 									vertices.push_back(0);
 								}
-								indices.push_back(ind);
-								indices.push_back(ind+1);
-								indices.push_back(ind+2);
-								indices.push_back(ind+1);
-								indices.push_back(ind+2);
-								indices.push_back(ind+3);
+							indices.push_back(ind);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+1);
+							indices.push_back(ind+2);
+							indices.push_back(ind+3);
 
-								// half-circle up
-								float yc = y + h2;
-								ind = vertices.size();
-								for(int i = 0; i <= 12; ++i) {
-									float a = 2*M_PI*i/24;
-									vertices.push_back(x + w*cos(a));
-									vertices.push_back(yc + w*sin(a));
-									vertices.push_back(0);
-									if(i < 12) {
-										indices.push_back(ind + i);
-										indices.push_back(ind + i+1);
-										indices.push_back(ind + 13);
-									}
-								}
-								vertices.push_back(x);
-								vertices.push_back(yc);
-								vertices.push_back(0);
-
-								// half-circle up
-								yc = y - h2;
-								ind = vertices.size();
-								for(int i = 0; i <= 12; ++i) {
-									float a = - 2*M_PI*i/24;
-									vertices.push_back(x + w*cos(a));
-									vertices.push_back(yc + w*sin(a));
-									vertices.push_back(0);
-									if(i < 12) {
-										indices.push_back(ind + i);
-										indices.push_back(ind + i+1);
-										indices.push_back(ind + 13);
-									}
-								}
-								vertices.push_back(x);
-								vertices.push_back(yc);
-								vertices.push_back(0);
-							} else {
-								float w2 = w - h;
-
-								// rectangle
-								for(float dx : {-w2, w2}) for(float dy : {-h, h}) {
-									vertices.push_back(x+dx);
-									vertices.push_back(y+dy);
-									vertices.push_back(0);
-								}
-								indices.push_back(ind);
-								indices.push_back(ind+1);
-								indices.push_back(ind+2);
-								indices.push_back(ind+1);
-								indices.push_back(ind+2);
-								indices.push_back(ind+3);
-
-								// half-circle up
-								float xc = x + w2;
+							// half-circles
+							for(int hc : {-1, 1}) {
+								float xc = vert ? x : x + hc * dhw;
+								float yc = vert ? y + hc * dhw : y;
 								ind = vertices.size() / 3;
 								for(int i = 0; i <= 12; ++i) {
-									float a = 2*M_PI*i/24 - M_PI_2;
-									vertices.push_back(xc + h*cos(a));
-									vertices.push_back(y + h*sin(a));
+									float a = 2*M_PI*i/24 - hc*M_PI_2 + a0;
+									vertices.push_back(xc + r*cos(a));
+									vertices.push_back(yc + r*sin(a));
 									vertices.push_back(0);
 									if(i < 12) {
 										indices.push_back(ind + i);
@@ -348,25 +344,7 @@ Object readGerber(istream &in) {
 									}
 								}
 								vertices.push_back(xc);
-								vertices.push_back(y);
-								vertices.push_back(0);
-
-								// half-circle up
-								xc = x - w2;
-								ind = vertices.size() / 3;
-								for(int i = 0; i <= 12; ++i) {
-									float a = 2*M_PI*i/24 + M_PI_2;
-									vertices.push_back(xc + h*cos(a));
-									vertices.push_back(y + h*sin(a));
-									vertices.push_back(0);
-									if(i < 12) {
-										indices.push_back(ind + i);
-										indices.push_back(ind + i+1);
-										indices.push_back(ind + 13);
-									}
-								}
-								vertices.push_back(xc);
-								vertices.push_back(y);
+								vertices.push_back(yc);
 								vertices.push_back(0);
 							}
 						}
