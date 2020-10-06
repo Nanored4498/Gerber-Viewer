@@ -17,20 +17,29 @@ void skipLine(istream &in, char end='\n') {
 }
 
 void triangulate(const vector<float> &vertices, vector<uint> &indices, uint start=0) {
-	uint V = vertices.size()/3;
-	vector<uint> order(V - start);
+	vector<uint> order(vertices.size() - start);
 	for(uint i = 0; i < order.size(); ++i) order[i] = start + i;
 	const auto compY = [&](const uint i, const uint j)->bool {
 		float yi = vertices[3*i+1], yj = vertices[3*j+1];
 		return yi < yj || (yi == yj && vertices[3*i] < vertices[3*j]);
 	};
 	sort(order.begin(), order.end(), compY);
-	const auto compX = [&](const uint i, const uint j)->bool {
-		// TODO
+	typedef pair<uint, uint> puu;
+	const auto compE = [&](const puu &a, const puu &b)->bool {
+		float xa0 = vertices[3*a.first], xb0 = vertices[3*b.first];
+		float ya0 = vertices[3*a.first+1], yb0 = vertices[3*b.first+1];
+		if(ya0 < yb0) return xa0 + (yb0 - ya0) * (vertices[3*a.second] - xa0) / (vertices[3*a.second+1] - ya0) < xb0;
+		else return xa0 < xb0 + (ya0 - yb0) * (vertices[3*b.second] - xb0) / (vertices[3*b.second+1] - yb0);
 	};
-	set<uint, decltype(compX)> BST(compX);
-	for(int i : order) {
-		
+	map<puu, uint, decltype(compE)> BST(compE);
+	for(uint j : order) {
+		uint i = start + (j - start + order.size()-1) % order.size();
+		uint k = start + (j - start + 1) % order.size();
+		bool ui = compY(i, j), uk = compY(k, j);
+		if(ui) BST.erase({i, j});
+		else BST[{j, i}] = j;
+		if(uk) BST.erase({k, j});
+		else BST[{j, k}] = j;
 	}
 }
 
