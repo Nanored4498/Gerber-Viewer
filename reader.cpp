@@ -2,7 +2,9 @@
 
 #include <iostream>
 #include <vector>
+#include <algorithm>
 #include <map>
+#include <set>
 #include <cmath>
 
 #include "glad.h"
@@ -12,6 +14,24 @@ using namespace std;
 void skipLine(istream &in, char end='\n') {
 	char c='0';
 	while(c != end && c != EOF) in.get(c);
+}
+
+void triangulate(const vector<float> &vertices, vector<uint> &indices, uint start=0) {
+	uint V = vertices.size()/3;
+	vector<uint> order(V - start);
+	for(uint i = 0; i < order.size(); ++i) order[i] = start + i;
+	const auto compY = [&](const uint i, const uint j)->bool {
+		float yi = vertices[3*i+1], yj = vertices[3*j+1];
+		return yi < yj || (yi == yj && vertices[3*i] < vertices[3*j]);
+	};
+	sort(order.begin(), order.end(), compY);
+	const auto compX = [&](const uint i, const uint j)->bool {
+		// TODO
+	};
+	set<uint, decltype(compX)> BST(compX);
+	for(int i : order) {
+		
+	}
 }
 
 Object createObj(const vector<float> vertices, const vector<uint> indices) {
@@ -143,6 +163,7 @@ Object readGerber(istream &in) {
 	float cX=0, cY=0;
 	vector<float> vertices;
 	vector<uint> indices;
+	uint region_start = 0;
 
 	string s;
 	in >> s;
@@ -228,48 +249,49 @@ Object readGerber(istream &in) {
 				} else if(s[0] == 'Y') y = stof(s.substr(1, s.size()-5)) * SCALE * DIV_Y;
 				char d = s[s.size()-2];
 				if(d == '1') {
-					// TODO: Check if we are in region
-					vector<float> &params = apertures[ap_id].parameters;
-					if(apertures[ap_id].temp_name == "C") {
-						if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
-						if(interpolation_mode == 1) {
-							float r = .5*params[0];
-							float a0 = atan2(y-cY, x-cX);
-							uint ind = vertices.size() / 3;
-
-							// rectangle
-							float xs[] = {cX, x}, ys[] = {cY, y};
-							for(int i : {0, 1}) for(float s : {-r, r}) {
-									vertices.push_back(xs[i]-s*sin(a0));
-									vertices.push_back(ys[i]+s*cos(a0));
-									vertices.push_back(0);
-								}
-							indices.push_back(ind);
-							indices.push_back(ind+1);
-							indices.push_back(ind+2);
-							indices.push_back(ind+1);
-							indices.push_back(ind+2);
-							indices.push_back(ind+3);
-
-							// half-circles
-							for(int j : {0, 1}) {
-								ind = vertices.size() / 3;
-								for(int i = 0; i <= 12; ++i) {
-									float a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
-									vertices.push_back(xs[j] + r*cos(a));
-									vertices.push_back(ys[j] + r*sin(a));
-									vertices.push_back(0);
-									if(i < 12) {
-										indices.push_back(ind + i);
-										indices.push_back(ind + i+1);
-										indices.push_back(ind + 13);
+					if(in_region) {
+						region_start = vertices.size() / 3;
+					} else {
+						vector<float> &params = apertures[ap_id].parameters;
+						if(apertures[ap_id].temp_name == "C") {
+							if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+							if(interpolation_mode == 1) {
+								float r = .5*params[0];
+								float a0 = atan2(y-cY, x-cX);
+								uint ind;
+								float xs[] = {cX, x}, ys[] = {cY, y};
+								for(int j : {0, 1}) {
+									ind = vertices.size() / 3;
+									for(int i = 0; i <= 12; ++i) {
+										float a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
+										vertices.push_back(xs[j] + r*cos(a));
+										vertices.push_back(ys[j] + r*sin(a));
+										vertices.push_back(0);
+										if(i < 12) {
+											indices.push_back(ind + i);
+											indices.push_back(ind + i+1);
+											indices.push_back(ind + 13);
+										}
 									}
+									vertices.push_back(xs[j]);
+									vertices.push_back(ys[j]);
+									vertices.push_back(0);
 								}
-								vertices.push_back(xs[j]);
-								vertices.push_back(ys[j]);
-								vertices.push_back(0);
+								indices.push_back(ind-14);
+								indices.push_back(ind-2);
+								indices.push_back(ind);
+								indices.push_back(ind-14);
+								indices.push_back(ind);
+								indices.push_back(ind+12);
+
 							}
 						}
+					}
+				} else if(d == '2') {
+					if(in_region) {
+						uint nrs = vertices.size() / 3;
+
+						region_start = nrs;
 					}
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
@@ -312,22 +334,6 @@ Object readGerber(istream &in) {
 							bool vert = h > w;
 							float r = vert ? w : h;
 							float a0 = vert ? M_PI_2 : 0;
-
-							// rectangle
-							for(float dx : {vert ? -w : -dhw, vert ? w : dhw})
-								for(float dy : {vert ? -dhw : -h, vert ? dhw : h}) {
-									vertices.push_back(x+dx);
-									vertices.push_back(y+dy);
-									vertices.push_back(0);
-								}
-							indices.push_back(ind);
-							indices.push_back(ind+1);
-							indices.push_back(ind+2);
-							indices.push_back(ind+1);
-							indices.push_back(ind+2);
-							indices.push_back(ind+3);
-
-							// half-circles
 							for(int hc : {-1, 1}) {
 								float xc = vert ? x : x + hc * dhw;
 								float yc = vert ? y + hc * dhw : y;
@@ -347,9 +353,15 @@ Object readGerber(istream &in) {
 								vertices.push_back(yc);
 								vertices.push_back(0);
 							}
+							indices.push_back(ind-14);
+							indices.push_back(ind-2);
+							indices.push_back(ind);
+							indices.push_back(ind-14);
+							indices.push_back(ind);
+							indices.push_back(ind+12);
 						}
 					}
-				} else if(d != '2') cerr << "Unknown operation: " << d << endl; // D02 is just a move
+				} else cerr << "Unknown operation: " << d << endl;
 				cX = x;
 				cY = y;
 			} else cerr << "No tool selected while executing the command: " << s << endl;
