@@ -2,10 +2,11 @@
 
 #include <iostream>
 #include <vector>
-#include <algorithm>
 #include <map>
 #include <set>
 #include <cmath>
+
+#include "triangulate.h"
 
 #include "glad.h"
 
@@ -14,33 +15,6 @@ using namespace std;
 void skipLine(istream &in, char end='\n') {
 	char c='0';
 	while(c != end && c != EOF) in.get(c);
-}
-
-void triangulate(const vector<float> &vertices, vector<uint> &indices, uint start=0) {
-	vector<uint> order(vertices.size() - start);
-	for(uint i = 0; i < order.size(); ++i) order[i] = start + i;
-	const auto compY = [&](const uint i, const uint j)->bool {
-		float yi = vertices[3*i+1], yj = vertices[3*j+1];
-		return yi < yj || (yi == yj && vertices[3*i] < vertices[3*j]);
-	};
-	sort(order.begin(), order.end(), compY);
-	typedef pair<uint, uint> puu;
-	const auto compE = [&](const puu &a, const puu &b)->bool {
-		float xa0 = vertices[3*a.first], xb0 = vertices[3*b.first];
-		float ya0 = vertices[3*a.first+1], yb0 = vertices[3*b.first+1];
-		if(ya0 < yb0) return xa0 + (yb0 - ya0) * (vertices[3*a.second] - xa0) / (vertices[3*a.second+1] - ya0) < xb0;
-		else return xa0 < xb0 + (ya0 - yb0) * (vertices[3*b.second] - xb0) / (vertices[3*b.second+1] - yb0);
-	};
-	map<puu, uint, decltype(compE)> BST(compE);
-	for(uint j : order) {
-		uint i = start + (j - start + order.size()-1) % order.size();
-		uint k = start + (j - start + 1) % order.size();
-		bool ui = compY(i, j), uk = compY(k, j);
-		if(ui) BST.erase({i, j});
-		else BST[{j, i}] = j;
-		if(uk) BST.erase({k, j});
-		else BST[{j, k}] = j;
-	}
 }
 
 Object createObj(const vector<float> vertices, const vector<uint> indices) {
@@ -243,9 +217,26 @@ Object readGerber(istream &in) {
 		} else if(s == "G01*") interpolation_mode = 1;
 		else if(s == "G02*") interpolation_mode = 2;
 		else if(s == "G03*") interpolation_mode = 3;
-		else if(s == "G36*") in_region = true;
-		else if(s == "G37*") in_region = false;
-		else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
+		else if(s == "G36*") {
+			if(in_region) cerr << "Can't open a region already opened !!" << endl;
+			else {
+				in_region = true;
+				region_start = vertices.size() / 3;
+			}
+		} else if(s == "G37*") {
+			if(!in_region) cerr << "Can't close a region without opening it !!" << endl;
+			else {
+				in_region = false;
+				if(region_start+4 <= vertices.size()/3) {
+					if(vertices[3*region_start] == vertices[vertices.size()-3] && vertices[3*region_start+1] == vertices[vertices.size()-2]) {
+						vertices.pop_back();
+						vertices.pop_back();
+						vertices.pop_back();
+						triangulate(vertices, indices, region_start);
+					} else cerr << "The contour need to be closed when using command G37 !!";
+				}
+			}
+		} else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
 			if(ap_id >= 0) {
 				float x = cX, y = cY;
 				if(s[0] == 'X') {
@@ -259,7 +250,12 @@ Object readGerber(istream &in) {
 				char d = s[s.size()-2];
 				if(d == '1') {
 					if(in_region) {
-						region_start = vertices.size() / 3;
+						if(3*region_start == vertices.size()) cerr << "Need to define a fist point with D02 command before tracing a segment with D01 !!!" << endl;
+						else {
+							vertices.push_back(x);
+							vertices.push_back(y);
+							vertices.push_back(0);
+						}
 					} else {
 						vector<float> &params = apertures[ap_id].parameters;
 						if(apertures[ap_id].temp_name == "C") {
@@ -298,9 +294,18 @@ Object readGerber(istream &in) {
 					}
 				} else if(d == '2') {
 					if(in_region) {
-						uint nrs = vertices.size() / 3;
-
-						region_start = nrs;
+						if(region_start+4 <= vertices.size()/3) {
+							if(vertices[3*region_start] == vertices[vertices.size()-3] && vertices[3*region_start+1] == vertices[vertices.size()-2]) {
+								vertices.pop_back();
+								vertices.pop_back();
+								vertices.pop_back();
+								triangulate(vertices, indices, region_start);
+							} else cerr << "The contour need to be closed when using command D02 !!";
+						}
+						region_start = vertices.size() / 3;
+						vertices.push_back(x);
+						vertices.push_back(y);
+						vertices.push_back(0);
 					}
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
