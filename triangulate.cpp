@@ -70,6 +70,11 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 		new2->connect(e2);
 		out.push_back(new1);
 		out.push_back(new2);
+		for(Edge *e : {e1, e2}) if(e->next->next->next == e) {
+			indices.push_back(e->a);
+			indices.push_back(e->b);
+			indices.push_back(e->next->b);
+		}
 		cerr << "add " << i << " " << j << endl;
 	};
 	map<Edge*, Edge*, decltype(compE)> BST(compE);
@@ -124,20 +129,105 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 		}
 	}
 
-	// TODO: Replace this code for convex polygons by a code for y-monotone polygons 
-	for(uint i = 0; i < out.size(); ++i) {
+	uint Es = out.size();
+	for(uint i = 0; i < Es; ++i) {
 		if(out[i]->next == nullptr) continue;
 		Edge *e = out[i];
-		uint v = e->prev->a;
-		while(e != nullptr) {
-			if(e->a != v && e->b != v) {
-				indices.push_back(v);
-				indices.push_back(e->a);
-				indices.push_back(e->b);
+		while(compY(e->a, e->b) || compY(e->next->b, e->b)) e = e->next;
+		Edge *el = e->next, *er = e->prev;
+		vector<Edge*> order = {e};
+		while(compY(el->a, el->b) && compY(er->b, er->a)) {
+			if(compY(el->b, er->b)) {
+				order.push_back(el);
+				el = el->next;
+			} else {
+				order.push_back(er);
+				er = er->prev;
 			}
-			e->prev->next = nullptr;
-			e = e->next;
 		}
+		while(compY(el->a, el->b)) {
+			order.push_back(el);
+			el = el->next;
+		}
+		while(compY(er->b, er->a)) {
+			order.push_back(er);
+			er = er->prev;
+		}
+		uint n = order.size();
+		cerr << "monotone: " << n << endl;
+		for(Edge* e : order) cerr << e->b << " ";
+		cerr << endl;
+
+		vector<Edge*> stack = {order[0], order[1]};
+		for(uint i = 2; i+1 < n; ++i) {
+			e = order[i];
+			Edge *e2 = stack.back();
+			if(compY(e->a, e->b)) { // e is left side
+				if(e->a == e2->b) { // e2 is in the same side
+					cerr << e->b << " " << e2->b << " left same" << endl;
+					do {
+						stack.pop_back();
+						if(stack.empty()) break;
+						Edge *e3 = stack.back();
+						if(turnLeft(vertices, e3->b, e2->b, e->b)) {
+							addEdge(e, e3);
+							e = e3->next;
+							e2 = e3;
+						} else break;
+					} while(!stack.empty());
+					stack.push_back(e->prev);
+					stack.push_back(e);
+				} else { // e2 is in the opposite side
+					cerr << e->b << " " << e2->b << " left opp" << endl;
+					Edge *e3 = e->next;
+					do {
+						stack.pop_back();
+						addEdge(e, e2);
+						e2 = stack.back();
+					} while(stack.size() > 1);
+					stack.pop_back();
+					e = e3->prev;
+					stack.push_back(e->prev);
+					stack.push_back(e);
+				}
+			} else { // Right side
+				if(e->b == e2->a) { // e2 is in the same side
+					cerr << e->b << " " << e2->b << " right same" << endl;
+					do {
+						stack.pop_back();
+						if(stack.empty()) break;
+						Edge *e3 = stack.back();
+						if(turnLeft(vertices, e->b, e2->b, e3->b)) {
+							addEdge(e, e3);
+							e2 = e3;
+						} else break;
+					} while(!stack.empty());
+					stack.push_back(e->next);
+					stack.push_back(e);
+				} else { // e2 is in the opposite side
+					cerr << e->b << " " << e2->b << " right opp" << endl;
+					Edge *e3 = e;
+					do {
+						stack.pop_back();
+						addEdge(e3, e2);
+						e3 = e2->next;
+						e2 = stack.back();
+					} while(stack.size() > 1);
+					stack.pop_back();
+					stack.push_back(e->next);
+					stack.push_back(e);
+				}
+			}
+		}
+		e = order.back();
+		stack.pop_back();
+		while(!stack.empty()) {
+			Edge *e2 = stack.back();
+			stack.pop_back();
+			if(!stack.empty()) addEdge(e, e2);
+		}
+		
+		for(Edge *e : order) e->next = nullptr;
 	}
 
 	for(Edge *e : out) delete e;

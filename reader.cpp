@@ -237,7 +237,7 @@ Object readGerber(istream &in) {
 				}
 			}
 		} else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
-			if(ap_id >= 0) {
+			if(ap_id >= 0 || in_region) {
 				float x = cX, y = cY;
 				if(s[0] == 'X') {
 					size_t y_ind = s.find('Y');
@@ -301,7 +301,7 @@ Object readGerber(istream &in) {
 								vertices.pop_back();
 								triangulate(vertices, indices, region_start);
 							} else cerr << "The contour need to be closed when using command D02 !!";
-						}
+						} else while(vertices.size() > region_start*3) vertices.pop_back();
 						region_start = vertices.size() / 3;
 						vertices.push_back(x);
 						vertices.push_back(y);
