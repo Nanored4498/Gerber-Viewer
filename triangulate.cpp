@@ -4,11 +4,14 @@
 #include <iostream>
 
 using namespace std;
+typedef long long ll;
+#define X(i) coords[(i)<<1]
+#define Y(i) coords[((i)<<1) + 1]
 
-bool turnLeft(const vector<float> &vertices, uint i, uint j, uint k) {
-	float jx = vertices[3*j], jy = vertices[3*j+1];
-	float ax = jx - vertices[3*i], ay = jy - vertices[3*i+1];
-	float bx = vertices[3*k] - jx, by = vertices[3*k+1] - jy;
+bool turnLeft(const vector<ll> &coords, uint i, uint j, uint k) {
+	ll jx = X(j), jy = Y(j);
+	ll ax = jx - X(i), ay = jy - Y(i);
+	ll bx = X(k) - jx, by = Y(k) - jy;
 	return -ay * bx + ax * by > 0;
 }
 
@@ -22,12 +25,12 @@ struct Edge {
 	}
 };
 
-void triangulate(const vector<float> &vertices, vector<uint> &indices, uint start) {
-	size_t N = vertices.size()/3 - start;
-	// cerr << "triangulate: " << N << endl;
+void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
+	size_t N = coords.size()/2 - start;
+	cerr << "triangulate: " << N << endl;
 	const auto compY = [&](const uint i, const uint j)->bool {
-		float yi = vertices[3*i+1], yj = vertices[3*j+1];
-		return yi < yj || (yi == yj && vertices[3*i] < vertices[3*j]);
+		ll yi = Y(i), yj = Y(j);
+		return yi < yj || (yi == yj && X(i) < X(j));
 	};
 	vector<uint> order(N);
 	vector<Edge*> in(N), out(N);
@@ -42,7 +45,7 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 	in[0] = out[N-1];
 	out[0]->connect(in[0]);
 	sort(order.begin(), order.end(), compY);
-	if(!turnLeft(vertices, in[order[0]-start]->a, order[0], out[order[0]-start]->b)) { // the contour is clockwise
+	if(!turnLeft(coords, in[order[0]-start]->a, order[0], out[order[0]-start]->b)) { // the contour is clockwise
 		// we make it counter-clockwise
 		for(uint i = 0; i < N; ++i) {
 			swap(out[i]->a, out[i]->b);
@@ -52,14 +55,19 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 	}
 
 	const auto compE = [&](const Edge *e1, const Edge *e2)->bool {
-		float xa0 = vertices[3*e1->a], xb0 = vertices[3*e2->a];
-		float ya0 = vertices[3*e1->a+1], yb0 = vertices[3*e2->a+1];
-		if(ya0 < yb0) return xa0 + (yb0 - ya0) * (vertices[3*e1->b] - xa0) / (vertices[3*e1->b+1] - ya0) < xb0;
-		else return xa0 < xb0 + (ya0 - yb0) * (vertices[3*e2->b] - xb0) / (vertices[3*e2->b+1] - yb0);
+		uint a1 = e1->a, b1 = e1->b, a2 = e2->a, b2 = e2->b;
+		if(Y(a1) > Y(b1)) swap(a1, b1);
+		if(Y(a2) > Y(b2)) swap(a2, b2);
+		ll xa1 = X(a1), xa2 = X(a2);
+		ll ya1 = Y(a1), ya2 = Y(a2);
+		if(ya1 < ya2) xa1 += (ya2 - ya1) * (X(b1) - xa1) / (Y(b1) - ya1);
+		else if(ya1 > ya2) xa2 += (ya1 - ya2) * (X(b2) - xa2) / (Y(b2) - ya2);
+		if(xa1 != xa2) return xa1 < xa2;
+		else return e1 < e2;
 	};
 	const auto isMerge = [&](uint j)->bool {
 		uint i = in[j-start]->a, k = out[j-start]->b;
-		return compY(i, j) && compY(k, j) && !turnLeft(vertices, i, j, k);
+		return compY(i, j) && compY(k, j) && !turnLeft(coords, i, j, k);
 	};
 	const auto addEdge = [&](Edge *e1, Edge *e2)->void {
 		uint i = e1->b, j = e2->b;
@@ -81,6 +89,7 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 	const auto right_edge = [&](uint j) {
 		Edge *e = new Edge(j, j);
 		auto right = BST.upper_bound(e);
+		if(right == BST.end()) cerr << "BUG" << endl;
 		delete e;
 		return right;
 	};
@@ -89,7 +98,7 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 		uint i = e_in->a, k = e_out->b;
 		if(compY(j, i)) {
 			if(compY(j, k)) {
-				if(turnLeft(vertices, i, j, k)) { // start vertex
+				if(turnLeft(coords, i, j, k)) { // start vertex
 					BST[e_out] = e_in;
 				} else { // split vertex
 					auto right = right_edge(j);
@@ -103,8 +112,8 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 				right->second = e_in;
 			}
 		} else {
-			if(compY(k, j)) { // end or merge vertex
-				if(turnLeft(vertices, i, j, k)) { // end vertex
+			if(compY(k, j)) {
+				if(turnLeft(coords, i, j, k)) { // end vertex
 					Edge *helper = BST[e_in];
 					if(isMerge(helper->b)) addEdge(e_in, helper);
 					BST.erase(e_in);
@@ -124,12 +133,18 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 			}
 		}
 	}
-
+	cerr << "Monotonic decompostion done" << endl;
+	
 	uint Es = out.size();
 	for(uint i = 0; i < Es; ++i) {
 		if(out[i]->next == nullptr) continue;
 		Edge *e = out[i];
-		while(compY(e->a, e->b) || compY(e->next->b, e->b)) e = e->next;
+		cerr << "Found a new edge" << endl;
+		while(compY(e->a, e->b) || compY(e->next->b, e->b)) {
+			// cerr << e << " " << e->a << " " << e->b << " " << e->next << " " << e->prev << endl;
+			e = e->next;
+			// cerr << "B " << e << " " << e->a << " " << e->b << " " << e->next << " " << e->prev << endl;
+		}
 		Edge *el = e->next, *er = e->prev;
 		vector<Edge*> order = {e};
 		while(compY(el->a, el->b) && compY(er->b, er->a)) {
@@ -149,8 +164,13 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 			order.push_back(er);
 			er = er->prev;
 		}
-		uint n = order.size();
-		// cerr << "monotone: " << n << endl;
+		uint n = order.size(), n2=1;
+		Edge *e2 = e->next;
+		while(e2 != e) {
+			++ n2;
+			e2 = e2->next;
+		}
+		cerr << "monotone: " << n << " " << n2 << endl;
 		// for(Edge* e : order) cerr << e->b << " "; cerr << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};
@@ -164,7 +184,7 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 						stack.pop_back();
 						if(stack.empty()) break;
 						Edge *e3 = stack.back();
-						if(turnLeft(vertices, e3->b, e2->b, e->b)) {
+						if(turnLeft(coords, e3->b, e2->b, e->b)) {
 							addEdge(e, e3);
 							e = e3->next;
 							e2 = e3;
@@ -192,7 +212,7 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 						stack.pop_back();
 						if(stack.empty()) break;
 						Edge *e3 = stack.back();
-						if(turnLeft(vertices, e->b, e2->b, e3->b)) {
+						if(turnLeft(coords, e->b, e2->b, e3->b)) {
 							addEdge(e, e3);
 							e2 = e3;
 						} else break;
@@ -229,7 +249,9 @@ void triangulate(const vector<float> &vertices, vector<uint> &indices, uint star
 		}
 		
 		for(Edge *e : order) e->next = nullptr;
+		cerr << "end of monotone" << endl;
 	}
+	cerr << "END" << endl;
 
 	for(Edge *e : out) delete e;
 }
