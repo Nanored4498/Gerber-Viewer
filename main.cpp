@@ -10,7 +10,7 @@
 using namespace std;
 
 const int WIDTH = 1024, HEIGHT = 768;
-float x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
+float X0=1e9, X1=-1e9, Y0=1e9, Y1=-1e9;
 uint shaderProgram;
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
@@ -18,8 +18,8 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
 	int ratioLocation = glGetUniformLocation(shaderProgram, "ratio");
 	int zoomLocation = glGetUniformLocation(shaderProgram, "zoom");
 	float ratio = (float) width / (float) height;
-	float zoom = max(x1-x0, (y1-y0)*ratio) / 1.8f;
-	glUniform2f(centerLocation, (x0+x1)/2.f, (y0+y1)/2.f);
+	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.8f;
+	glUniform2f(centerLocation, (X0+X1)/2.f, (Y0+Y1)/2.f);
 	glUniform1f(ratioLocation, ratio);
 	glUniform1f(zoomLocation, zoom);
 	glViewport(0, 0, width, height);
@@ -78,8 +78,9 @@ int main(int argc, char* argv[]) {
 	const char *fragmentShaderSource =
 		"#version 330 core\n"
 		"out vec4 fragColor;\n"
+		"uniform vec3 color;\n"
 		"void main() {\n"
-		"	fragColor = vec4(1.0, 0.5, 0.2, 1.0);\n"
+		"	fragColor = vec4(color, 1.0);\n"
 		"}";
 	glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
 	glCompileShader(fragmentShader);
@@ -119,22 +120,27 @@ int main(int argc, char* argv[]) {
 		} else cerr << "Can't open file: " << argv[i] << endl;
 	}
 	for(const Object &o : objects) {
-		x0 = min(x0, o.x0);
-		x1 = max(x1, o.x1);
-		y0 = min(y0, o.y0);
-		y1 = max(y1, o.y1);
+		X0 = min(X0, o.x0);
+		X1 = max(X1, o.x1);
+		Y0 = min(Y0, o.y0);
+		Y1 = max(Y1, o.y1);
 	}
 
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-	glClearColor(0.2, 0.3, 0.2, 1.0);
+	glClearColor(0.2, 0.25, 0.2, 1.0);
+	int colorLocation = glGetUniformLocation(shaderProgram, "color");
+	float colors[] = {1., .5, .2, .2, .2, .8};
+	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
-		for(const Object &o : objects) {
-			glBindVertexArray(o.VAO);
-			glDrawElements(GL_TRIANGLES, o.size, GL_UNSIGNED_INT, 0);
+		for(int i = 0; i < objects.size(); ++i) {
+			int j = 3 * (i % (sizeof(colors) / 3 / sizeof(float)));
+			glUniform3f(colorLocation, colors[j], colors[j+1], colors[j+2]);
+			glBindVertexArray(objects[i].VAO);
+			glDrawElements(GL_TRIANGLES, objects[i].size, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
 		}
 		glfwSwapBuffers(window);
