@@ -138,39 +138,28 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 	uint Es = out.size();
 	for(uint i = 0; i < Es; ++i) {
 		if(out[i]->next == nullptr) continue;
-		Edge *e = out[i];
 		cerr << "Found a new edge" << endl;
-		while(compY(e->a, e->b) || compY(e->next->b, e->b)) {
-			// cerr << e << " " << e->a << " " << e->b << " " << e->next << " " << e->prev << endl;
-			e = e->next;
-			// cerr << "B " << e << " " << e->a << " " << e->b << " " << e->next << " " << e->prev << endl;
-		}
-		Edge *el = e->next, *er = e->prev;
-		vector<Edge*> order = {e};
-		while(compY(el->a, el->b) && compY(er->b, er->a)) {
-			if(compY(el->b, er->b)) {
-				order.push_back(el);
-				el = el->next;
-			} else {
-				order.push_back(er);
-				er = er->prev;
-			}
-		}
-		while(compY(el->a, el->b)) {
-			order.push_back(el);
-			el = el->next;
-		}
-		while(compY(er->b, er->a)) {
-			order.push_back(er);
-			er = er->prev;
-		}
-		uint n = order.size(), n2=1;
-		Edge *e2 = e->next;
+		Edge *e = out[i], *ey0 = e, *ey1 = e, *e2 = e->next;
 		while(e2 != e) {
-			++ n2;
+			if(compY(e2->b, ey0->b)) ey0 = e2; 
+			if(compY(ey1->b, e2->b)) ey1 = e2; 
 			e2 = e2->next;
 		}
-		cerr << "monotone: " << n << " " << n2 << endl;
+		vector<Edge*> order = {ey0};
+		e = ey0->prev;
+		e2 = ey0->next;
+		while(e != ey1 || e2 != ey1) {
+			if(compY(e->b, e2->b)) {
+				order.push_back(e);
+				e = e->prev;
+			} else {
+				order.push_back(e2);
+				e2 = e2->next;
+			}
+		}
+		order.push_back(ey1);
+		uint n = order.size();
+		cerr << "monotone: " << n << endl;
 		// for(Edge* e : order) cerr << e->b << " "; cerr << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};

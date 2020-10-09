@@ -151,15 +151,17 @@ Object readGerber(istream &in) {
 
 	string s;
 	in >> s;
-	while(s != "M02*") {
+	while(s != "M02*" && s != "M00*") {
 		if(s == "G04") skipLine(in, '*');
 		else if(s.size() == 13 && s.substr(0, 6) == "%FSLAX" && s[8] == 'Y' && s[11] == '*' && s[12] == '%') {
-			if(s[7] == '5') DIV_X = 1e5;
+			if(s[7] == '4') DIV_X = 1e4;
+			else if(s[7] == '5') DIV_X = 1e5;
 			else if(s[7] == '6') DIV_X = 1e6;
-			else cerr << "X cordinates have to have 5 or 6 digits in the fractional part." << endl;
-			if(s[10] == '5') DIV_Y = 1e5;
+			else cerr << "X cordinates have to have 4, 5 or 6 digits in the fractional part." << endl;
+			if(s[10] == '4') DIV_Y = 1e4;
+			else if(s[10] == '5') DIV_Y = 1e5;
 			else if(s[10] == '6') DIV_Y = 1e6;
-			else cerr << "X cordinates have to have 5 or 6 digits in the fractional part." << endl;
+			else cerr << "X cordinates have to have 4, 5 or 6 digits in the fractional part." << endl;
 		} else if(s.size() == 7 && s.substr(0, 3) == "%MO" && s[5] == '*' && s[6] == '%') {
 			string unit = s.substr(3, 2);
 			if(unit != "MM" && unit != "IN") cerr << "Unknown unit: " << unit << endl;
@@ -214,6 +216,10 @@ Object readGerber(istream &in) {
 			int id = stoi(s.substr(1, s.size()-2));
 			if(apertures.count(id)) ap_id = id;
 			else cerr << "The aperture number " << id << " is not defined" << endl;
+		} else if(s.substr(0, 4) == "G54D" && s.back() == '*') {
+			int id = stoi(s.substr(4, s.size()-5));
+			if(apertures.count(id)) ap_id = id;
+			else cerr << "The aperture number " << id << " is not defined" << endl;
 		} else if(s == "G01*") interpolation_mode = 1;
 		else if(s == "G02*") interpolation_mode = 2;
 		else if(s == "G03*") interpolation_mode = 3;
@@ -235,17 +241,22 @@ Object readGerber(istream &in) {
 					} else cerr << "The contour need to be closed when using command G37 !!";
 				} else while(coords.size() > region_start*2) coords.pop_back();
 			}
+		} else if(s == "G90*") {
+			// By default
+		} else if(s == "G91*") {
+			cerr << "Incremental notations is not supported !!" << endl;
 		} else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
 			if(ap_id >= 0 || in_region) {
 				long long x = cX, y = cY;
-				if(s[0] == 'X') {
-					size_t y_ind = s.find('Y');
-					if(y_ind == string::npos) x = stoll(s.substr(1, s.size()-5));
-					else {
-						x = stoll(s.substr(1, y_ind-1));
-						y = stoll(s.substr(y_ind+1, s.size()-5-y_ind));
+				for(auto p : {make_pair('X', &x), make_pair('Y', &y)}) {
+					size_t ind = s.find(p.first);
+					if(ind != string::npos) {
+						size_t i = ++ ind;
+						if(s[i] == '-') ++ i;
+						while(s[i] >= '0' && s[i] <= '9') ++i;
+						*p.second = stoll(s.substr(ind, i-ind));
 					}
-				} else if(s[0] == 'Y') y = stoll(s.substr(1, s.size()-5));
+				}
 				char d = s[s.size()-2];
 				if(d == '1') {
 					if(in_region) {

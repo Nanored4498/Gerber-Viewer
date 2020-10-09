@@ -130,7 +130,9 @@ int main(int argc, char* argv[]) {
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	glClearColor(0.2, 0.25, 0.2, 1.0);
 	int colorLocation = glGetUniformLocation(shaderProgram, "color");
-	float colors[] = {1., .5, .2, .2, .2, .8};
+	float colors[] = {1., .5, .2,
+					.2, .2, .8,
+					.8, .1, .2};
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// Rendering loop
