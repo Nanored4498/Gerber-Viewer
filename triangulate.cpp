@@ -53,7 +53,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			swap(out[i], in[i]);
 		}
 	}
-	for(Edge* e : out) cerr << e->b << " "; cerr << endl;
 
 	const auto compE = [&](const Edge *e1, const Edge *e2)->bool {
 		uint a1 = e1->a, b1 = e1->b, a2 = e2->a, b2 = e2->b;
@@ -84,7 +83,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			indices.push_back(e->b);
 			indices.push_back(e->next->b);
 		}
-		cerr << "add " << i << " " << j << endl;
 	};
 	map<Edge*, Edge*, decltype(compE)> BST(compE);
 	const auto right_edge = [&](uint j) {
@@ -119,12 +117,15 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 					if(isMerge(helper->b)) addEdge(e_in, helper);
 					BST.erase(e_in);
 				} else { // merge vertex
-					Edge *helper = BST[e_in];
-					if(isMerge(helper->b)) addEdge(e_in, helper);
+					Edge *helper = BST[e_in], *in2 = e_in;
+					if(isMerge(helper->b)) {
+						addEdge(e_in, helper);
+						in2 = e_out->prev;
+					}
 					BST.erase(e_in);
 					auto right = right_edge(j);
 					if(isMerge(right->second->b)) addEdge(e_out->prev, right->second);
-					right->second = e_out->prev;
+					right->second = in2;
 				}
 			} else { // right side vertex
 				Edge *helper = BST[e_in];
@@ -139,7 +140,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 	uint Es = out.size();
 	for(uint i = 0; i < Es; ++i) {
 		if(out[i]->next == nullptr) continue;
-		cerr << "Found a new edge" << endl;
 		Edge *e = out[i], *ey0 = e, *ey1 = e, *e2 = e->next;
 		while(e2 != e) {
 			if(compY(e2->b, ey0->b)) ey0 = e2; 
@@ -161,7 +161,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 		order.push_back(ey1);
 		uint n = order.size();
 		cerr << "monotone: " << n << endl;
-		for(Edge* e : order) cerr << e->b << " "; cerr << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};
 		for(uint i = 2; i+1 < n; ++i) {
@@ -169,7 +168,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			Edge *e2 = stack.back();
 			if(compY(e->a, e->b)) { // e is right side
 				if(e->a == e2->b) { // e2 is in the same side
-					// cerr << e->b << " " << e2->b << " right same" << endl;
 					do {
 						stack.pop_back();
 						if(stack.empty()) break;
@@ -183,7 +181,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 					stack.push_back(e->prev);
 					stack.push_back(e);
 				} else { // e2 is in the opposite side
-					// cerr << e->b << " " << e2->b << " right opp" << endl;
 					Edge *e3 = e->next;
 					do {
 						stack.pop_back();
@@ -197,7 +194,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 				}
 			} else { // Left side
 				if(e->b == e2->a) { // e2 is in the same side
-					// cerr << e->b << " " << e2->b << " left same" << endl;
 					do {
 						stack.pop_back();
 						if(stack.empty()) break;
@@ -210,7 +206,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 					stack.push_back(e->next);
 					stack.push_back(e);
 				} else { // e2 is in the opposite side
-					// cerr << e->b << " " << e2->b << " left opp" << endl;
 					Edge *e3 = e;
 					do {
 						stack.pop_back();
@@ -225,7 +220,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			}
 		}
 		e = order.back();
-		// cerr << e->b << " " << " end" << endl;
 		stack.pop_back();
 		while(!stack.empty()) {
 			Edge *e2 = stack.back();

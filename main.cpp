@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
 	float colors[] = {1., .5, .2,
 					.2, .2, .8,
 					.8, .1, .2};
-	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
