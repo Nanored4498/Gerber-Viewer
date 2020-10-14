@@ -53,6 +53,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			swap(out[i], in[i]);
 		}
 	}
+	for(Edge* e : out) cerr << e->b << " "; cerr << endl;
 
 	const auto compE = [&](const Edge *e1, const Edge *e2)->bool {
 		uint a1 = e1->a, b1 = e1->b, a2 = e2->a, b2 = e2->b;
@@ -83,7 +84,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			indices.push_back(e->b);
 			indices.push_back(e->next->b);
 		}
-		// cerr << "add " << i << " " << j << endl;
+		cerr << "add " << i << " " << j << endl;
 	};
 	map<Edge*, Edge*, decltype(compE)> BST(compE);
 	const auto right_edge = [&](uint j) {
@@ -160,7 +161,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 		order.push_back(ey1);
 		uint n = order.size();
 		cerr << "monotone: " << n << endl;
-		// for(Edge* e : order) cerr << e->b << " "; cerr << endl;
+		for(Edge* e : order) cerr << e->b << " "; cerr << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};
 		for(uint i = 2; i+1 < n; ++i) {
