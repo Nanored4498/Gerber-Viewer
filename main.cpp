@@ -57,12 +57,15 @@ int main(int argc, char* argv[]) {
 	uint vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	const char *vertexShaderSource =
 		"#version 330 core\n"
-		"layout (location = 0) in vec3 pos;\n"
+		"layout (location = 0) in vec2 pos;\n"
+		"layout (location = 1) in vec3 col0;\n"
 		"uniform vec2 center;\n"
 		"uniform float ratio;\n"
 		"uniform float zoom;\n"
+		"out vec3 col;\n"
 		"void main() {\n"
 		"	gl_Position = vec4(pos.x-center.x, (pos.y-center.y) * ratio, 0., zoom);\n"
+		"	col = col0;\n"
 		"}";
 	glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
 	glCompileShader(vertexShader);
@@ -77,10 +80,10 @@ int main(int argc, char* argv[]) {
 	uint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	const char *fragmentShaderSource =
 		"#version 330 core\n"
+		"in vec3 col;\n"
 		"out vec4 fragColor;\n"
-		"uniform vec3 color;\n"
 		"void main() {\n"
-		"	fragColor = vec4(color, 1.0);\n"
+		"	fragColor = vec4(col, 1.0);\n"
 		"}";
 	glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
 	glCompileShader(fragmentShader);
@@ -109,13 +112,21 @@ int main(int argc, char* argv[]) {
 	glUseProgram(shaderProgram);
 
 	// Read input files
+	float colors[] = {1., .5, .2,
+					.2, .2, .8,
+					.8, .1, .2};
 	vector<Object> objects;
 	for(int i = 1; i < argc; ++i) {
 		string path = argv[i];
 		ifstream in(path);
 		if(in.is_open()) {
-			if(path.substr(path.size()-3) == "drl") objects.push_back(readXNC(in));
-			else objects.push_back(readGerber(in));
+			float *color0 = &colors[3 * ((i-1) % (sizeof(colors)/3/sizeof(float)))];
+			if(path.substr(path.size()-3) == "drl") objects.push_back(readXNC(in, color0));
+			else {
+				pair<Object, Object> obs = readGerber(in, color0);
+				objects.push_back(obs.first);
+				objects.push_back(obs.second);
+			}
 			in.close();
 		} else cerr << "Can't open file: " << argv[i] << endl;
 	}
@@ -129,18 +140,12 @@ int main(int argc, char* argv[]) {
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	glClearColor(0.2, 0.25, 0.2, 1.0);
-	int colorLocation = glGetUniformLocation(shaderProgram, "color");
-	float colors[] = {1., .5, .2,
-					.2, .2, .8,
-					.8, .1, .2};
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
-		for(int i = 0; i < objects.size(); ++i) {
-			int j = 3 * (i % (sizeof(colors) / 3 / sizeof(float)));
-			glUniform3f(colorLocation, colors[j], colors[j+1], colors[j+2]);
+		for(int i = 0; i < (int) objects.size(); ++i) {
 			glBindVertexArray(objects[i].VAO);
 			glDrawElements(GL_TRIANGLES, objects[i].size, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
@@ -149,11 +154,7 @@ int main(int argc, char* argv[]) {
 		glfwPollEvents();
 	}
 
-	for(const Object &o : objects) {
-		glDeleteVertexArrays(1, &o.VAO);
-		glDeleteBuffers(1, &o.VBO);
-		glDeleteBuffers(1, &o.EBO);
-	}
+	for(Object &o : objects) o.clean();
 	glDeleteProgram(shaderProgram);
 	glfwTerminate();
 

@@ -5,28 +5,41 @@
 #include <map>
 #include <set>
 #include <cmath>
+#include <random>
 
 #include "triangulate.h"
+
+#define JC_VORONOI_IMPLEMENTATION
+#include "jc_voronoi.h"
 
 #include "glad.h"
 
 using namespace std;
+
+uniform_real_distribution<float> unif(0, 1);
+default_random_engine re;
 
 void skipLine(istream &in, char end='\n') {
 	char c='0';
 	while(c != end && c != EOF) in.get(c);
 }
 
-Object createObj(const vector<float> vertices, const vector<uint> indices) {
-	uint VAO, VBO, EBO;
+Object createObj(const vector<float> vertices, const vector<uint> indices, const vector<float> colors) {
+	uint VAO, VBO, VBOc, EBO;
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);
 
 	glGenBuffers(1, &VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices.size(), vertices.data(), GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), 0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2*sizeof(float), 0);
 	glEnableVertexAttribArray(0);
+
+	glGenBuffers(1, &VBOc);
+	glBindBuffer(GL_ARRAY_BUFFER, VBOc);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*colors.size(), colors.data(), GL_STATIC_DRAW);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), 0);
+	glEnableVertexAttribArray(1);
 
 	glGenBuffers(1, &EBO);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
@@ -37,17 +50,17 @@ Object createObj(const vector<float> vertices, const vector<uint> indices) {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	float x0=1e9, x1=-1e9, y0=1e9, y1=-1e9;
-	for(int i = 0; i < (int) vertices.size(); i += 3) {
+	for(int i = 0; i < (int) vertices.size(); i += 2) {
 		x0 = min(x0, vertices[i]);
 		x1 = max(x1, vertices[i]);
 		y0 = min(y0, vertices[i+1]);
 		y1 = max(y1, vertices[i+1]);
 	}
 
-	return {VAO, VBO, EBO, indices.size(), x0, x1, y0, y1};
+	return {VAO, VBO, VBOc, EBO, indices.size(), x0, x1, y0, y1};
 }
 
-Object readXNC(istream &in) {
+Object readXNC(istream &in, float *color0) {
 	float SCALE = 1.0;
 	float tools[100];
 	for(int t = 0; t < 100; ++t) tools[t] = -1;
@@ -107,19 +120,17 @@ Object readXNC(istream &in) {
 				float x = stof(s.substr(1, i-1)) * SCALE;
 				float y = stof(s.substr(i+1)) * SCALE;
 				float r = .5 * tools[T];
-				uint ind = vertices.size() / 3;
+				uint ind = vertices.size() / 2;
 				for(int i = 0; i < 24; ++i) {
 					float a = 2*M_PI*i/24;
 					vertices.push_back(x + r*cos(a));
 					vertices.push_back(y + r*sin(a));
-					vertices.push_back(0);
 					indices.push_back(ind + i);
 					indices.push_back(ind + ((i+1) % 24));
 					indices.push_back(ind + 24);
 				}
 				vertices.push_back(x);
 				vertices.push_back(y);
-				vertices.push_back(0);
 			}
 		} else {
 			cerr << "Unknown word: " << s << endl;
@@ -128,7 +139,10 @@ Object readXNC(istream &in) {
 		in >> s;
 	}
 
-	return createObj(vertices, indices);
+	vector<float> colors(3*vertices.size()/2);
+	for(int i = 0; i < colors.size(); ++i) colors[i] = color0[i%3];
+
+	return createObj(vertices, indices, colors);
 }
 
 struct Aperture {
@@ -136,7 +150,7 @@ struct Aperture {
 	vector<double> parameters;
 };
 
-Object readGerber(istream &in) {
+pair<Object, Object> readGerber(istream &in, float *color0) {
 	double DIV_X = 1.0, DIV_Y = 1.0;
 	bool dark = true;
 	map<int, Aperture> apertures;
@@ -145,13 +159,20 @@ Object readGerber(istream &in) {
 	bool in_region = false;
 	long long cX=0, cY=0;
 	vector<long long> coords;
-	vector<float> vertices;
+	vector<int> group;
 	vector<uint> indices;
 	uint region_start = 0;
+
+	const auto add_point = [&](long long x, long long y, int g) {
+		coords.push_back(x);
+		coords.push_back(y);
+		group.push_back(g);
+	};
 
 	string s;
 	in >> s;
 	while(s != "M02*" && s != "M00*") {
+		int g = group.empty() ? 0 : group.back()+1;
 		if(s == "G04") skipLine(in, '*');
 		else if(s.size() == 13 && s.substr(0, 6) == "%FSLAX" && s[8] == 'Y' && s[11] == '*' && s[12] == '%') {
 			if(s[7] == '4') DIV_X = 1e4;
@@ -237,9 +258,14 @@ Object readGerber(istream &in) {
 					if(coords[2*region_start] == coords[coords.size()-2] && coords[2*region_start+1] == coords.back()) {
 						coords.pop_back();
 						coords.pop_back();
+						group.pop_back();
 						triangulate(coords, indices, region_start);
 					} else cerr << "The contour need to be closed when using command G37 !!";
-				} else while(coords.size() > region_start*2) coords.pop_back();
+				} else while(coords.size() > region_start*2) {
+					coords.pop_back();
+					coords.pop_back();
+					group.pop_back();
+				}
 			}
 		} else if(s == "G90*") {
 			// By default
@@ -261,42 +287,37 @@ Object readGerber(istream &in) {
 				if(d == '1') {
 					if(in_region) {
 						if(2*region_start == coords.size()) cerr << "Need to define a fist point with D02 command before tracing a segment with D01 !!!" << endl;
-						else {
-							coords.push_back(x);
-							coords.push_back(y);
-						}
+						else add_point(x, y, group.back());
 					} else {
 						vector<double> &params = apertures[ap_id].parameters;
 						if(apertures[ap_id].temp_name == "C") {
-							if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
-							if(interpolation_mode == 1) {
-								double r = .5*params[0];
-								double a0 = atan2(y-cY, x-cX);
-								uint ind;
-								long long xs[] = {cX, x}, ys[] = {cY, y};
-								for(int j : {0, 1}) {
-									ind = coords.size() / 2;
-									for(int i = 0; i <= 12; ++i) {
-										double a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
-										coords.push_back(xs[j] + r*cos(a)*DIV_X);
-										coords.push_back(ys[j] + r*sin(a)*DIV_Y);
-										if(i < 12) {
-											indices.push_back(ind + i);
-											indices.push_back(ind + i+1);
-											indices.push_back(ind + 13);
-										}
-									}
-									coords.push_back(xs[j]);
-									coords.push_back(ys[j]);
-								}
-								indices.push_back(ind-14);
-								indices.push_back(ind-2);
-								indices.push_back(ind);
-								indices.push_back(ind-14);
-								indices.push_back(ind);
-								indices.push_back(ind+12);
-							}
-						}
+							// if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+							// if(interpolation_mode == 1) {
+							// 	double r = .5*params[0];
+							// 	double a0 = atan2(y-cY, x-cX);
+							// 	uint ind;
+							// 	long long xs[] = {cX, x}, ys[] = {cY, y};
+							// 	for(int j : {0, 1}) {
+							// 		ind = coords.size() / 2;
+							// 		for(int i = 0; i <= 12; ++i) {
+							// 			double a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
+							// 			add_point(xs[j] + r*cos(a)*DIV_X, ys[j] + r*sin(a)*DIV_Y, g);
+							// 			if(i < 12) {
+							// 				indices.push_back(ind + i);
+							// 				indices.push_back(ind + i+1);
+							// 				indices.push_back(ind + 13);
+							// 			}
+							// 		}
+							// 		add_point(xs[j], ys[j], g);
+							// 	}
+							// 	indices.push_back(ind-14);
+							// 	indices.push_back(ind-2);
+							// 	indices.push_back(ind);
+							// 	indices.push_back(ind-14);
+							// 	indices.push_back(ind);
+							// 	indices.push_back(ind+12);
+							// }
+						} else cerr << "The aperture " << apertures[ap_id].temp_name << " is not implemented for interpolations" << endl;
 					}
 				} else if(d == '2') {
 					if(in_region) {
@@ -304,12 +325,16 @@ Object readGerber(istream &in) {
 							if(coords[2*region_start] == coords[coords.size()-2] && coords[2*region_start+1] == coords.back()) {
 								coords.pop_back();
 								coords.pop_back();
+								group.pop_back();
 								triangulate(coords, indices, region_start);
 							} else cerr << "The contour need to be closed when using command D02 !!";
-						} else while(coords.size() > region_start*2) coords.pop_back();
+						} else while(coords.size() > region_start*2) {
+							coords.pop_back();
+							coords.pop_back();
+							group.pop_back();
+						}
 						region_start = coords.size() / 2;
-						coords.push_back(x);
-						coords.push_back(y);
+						add_point(x, y, g);
 					}
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
@@ -321,21 +346,16 @@ Object readGerber(istream &in) {
 							if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
 							for(int i = 0; i < 24; ++i) {
 								double a = 2*M_PI*i/24;
-								coords.push_back(x + r*cos(a)*DIV_X);
-								coords.push_back(y + r*sin(a)*DIV_Y);
+								add_point(x + r*cos(a)*DIV_X, y + r*sin(a)*DIV_Y, g);
 								indices.push_back(ind + i);
 								indices.push_back(ind + ((i+1) % 24));
 								indices.push_back(ind + 24);
 							}
-							coords.push_back(x);
-							coords.push_back(y);
+							add_point(x, y, g);
 						} else if(apertures[ap_id].temp_name == "R") {
 							long long w = .5*params[0]*DIV_X, h = .5*params[1]*DIV_Y;
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for rectangle" << endl;
-							for(long long dx : {-w, w}) for(double dy : {-h, h}) {
-								coords.push_back(x+dx);
-								coords.push_back(y+dy);
-							}
+							for(long long dx : {-w, w}) for(double dy : {-h, h}) add_point(x + dx, y + dy, g);
 							indices.push_back(ind);
 							indices.push_back(ind+1);
 							indices.push_back(ind+2);
@@ -355,16 +375,14 @@ Object readGerber(istream &in) {
 								ind = coords.size() / 2;
 								for(int i = 0; i <= 12; ++i) {
 									double a = 2*M_PI*i/24 - hc*M_PI_2 + a0;
-									coords.push_back(xc + r*cos(a)*DIV_X);
-									coords.push_back(yc + r*sin(a)*DIV_Y);
+									add_point(xc + r*cos(a)*DIV_X, yc + r*sin(a)*DIV_Y, g);
 									if(i < 12) {
 										indices.push_back(ind + i);
 										indices.push_back(ind + i+1);
 										indices.push_back(ind + 13);
 									}
 								}
-								coords.push_back(xc);
-								coords.push_back(yc);
+								add_point(xc, yc, g);
 							}
 							indices.push_back(ind-14);
 							indices.push_back(ind-2);
@@ -382,11 +400,52 @@ Object readGerber(istream &in) {
 		in >> s;
 	}
 	
-	vertices.resize(3 * coords.size()/2, 0.);
+	vector<float> cg(3*(group.back()+1));
+	for(float &c : cg) c = unif(re);
 	uint N = coords.size()/2;
+	vector<float> vertices(2*N, 0.);
 	for(uint i = 0; i < N; ++i) {
-		vertices[3*i] = coords[2*i] / DIV_X;
-		vertices[3*i+1] = coords[2*i+1] / DIV_Y;
+		vertices[2*i] = coords[2*i] / DIV_X;
+		vertices[2*i+1] = coords[2*i+1] / DIV_Y;
 	}
-	return createObj(vertices, indices);
+	vector<float> colors(3*N);
+	for(int i = 0; i < N; ++i) for(int c = 0; c < 3; ++c) colors[3*i+c] = .6*cg[3*group[i]+c];
+	Object ans = createObj(vertices, indices, colors);
+
+	vertices.clear();
+	indices.clear();
+	colors.clear();
+	jcv_point points[N];
+	for(uint i = 0; i < N; ++i) points[i] = {vertices[2*i], vertices[2*i+1]};
+	jcv_rect rect = {{ans.x0 - .1*(ans.x1-ans.x0), ans.y0 - .1*(ans.y1-ans.y0)},
+					{ans.x1 + .1*(ans.x1-ans.x0), ans.y1 + .1*(ans.y1-ans.y0)}};
+	jcv_diagram diagram;
+	memset(&diagram, 0, sizeof(jcv_diagram));
+	jcv_diagram_generate(N, points, &rect, nullptr, &diagram);
+	const jcv_site* sites = jcv_diagram_get_sites(&diagram);
+	for(int i = 0; i < diagram.numsites; ++i) {
+		const jcv_site* site = &sites[i];
+		const jcv_graphedge* e = site->edges;
+		int g = group[site->index];
+		uint si = vertices.size()/2;
+		vertices.push_back(site->p.x);
+		vertices.push_back(site->p.y);
+		for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
+		while(e) {
+			uint j = vertices.size()/2;
+			vertices.push_back(e->pos[0].x);
+			vertices.push_back(e->pos[0].y);
+			for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
+			vertices.push_back(e->pos[1].x);
+			vertices.push_back(e->pos[1].y);
+			for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
+			indices.push_back(si);
+			indices.push_back(j);
+			indices.push_back(j+1);
+			e = e->next;
+		}
+	}
+	jcv_diagram_free(&diagram);
+
+	return {createObj(vertices, indices, colors), ans};
 }
