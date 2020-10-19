@@ -1,3 +1,3 @@
 #pragma once
 
-void triangulate(const std::vector<long long> &vertices, std::vector<uint> &indices, uint start=0);
+void triangulate(const std::vector<long long> &vertices, std::vector<uint> &indices);

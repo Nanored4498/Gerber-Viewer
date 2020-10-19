@@ -29,6 +29,7 @@ find_package(glfw3 3.3 REQUIRED)
 
 set(SRCS
 	main.cpp
+	object.cpp
 	reader.cpp
 	triangulate.cpp
 	glad.c

@@ -25,9 +25,10 @@ struct Edge {
 	}
 };
 
-void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
-	size_t N = coords.size()/2 - start;
-	cerr << "triangulate: " << N << endl;
+void triangulate(const vector<ll> &coords, vector<uint> &indices) {
+	indices.clear();
+	size_t N = coords.size()/2;
+	// cerr << "triangulate: " << N << endl;
 	const auto compY = [&](const uint i, const uint j)->bool {
 		ll yi = Y(i), yj = Y(j);
 		return yi < yj || (yi == yj && X(i) < X(j));
@@ -35,8 +36,8 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 	vector<uint> order(N);
 	vector<Edge*> in(N), out(N);
 	for(uint i = 0; i < N; ++i) {
-		order[i] = start + i;
-		out[i] = new Edge(order[i], i+1==N ? start : order[i]+1);
+		order[i] = i;
+		out[i] = new Edge(i, (i+1)%N);
 		if(i > 0) {
 			in[i] = out[i-1];
 			out[i]->connect(in[i]);
@@ -45,7 +46,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 	in[0] = out[N-1];
 	out[0]->connect(in[0]);
 	sort(order.begin(), order.end(), compY);
-	if(!turnLeft(coords, in[order[0]-start]->a, order[0], out[order[0]-start]->b)) { // the contour is clockwise
+	if(!turnLeft(coords, in[order[0]]->a, order[0], out[order[0]]->b)) { // the contour is clockwise
 		// we make it counter-clockwise
 		for(uint i = 0; i < N; ++i) {
 			swap(out[i]->a, out[i]->b);
@@ -66,7 +67,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 		else return e1 < e2;
 	};
 	const auto isMerge = [&](uint j)->bool {
-		uint i = in[j-start]->a, k = out[j-start]->b;
+		uint i = in[j]->a, k = out[j]->b;
 		return compY(i, j) && compY(k, j) && !turnLeft(coords, i, j, k);
 	};
 	const auto addEdge = [&](Edge *e1, Edge *e2)->void {
@@ -88,12 +89,11 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 	const auto right_edge = [&](uint j) {
 		Edge *e = new Edge(j, j);
 		auto right = BST.upper_bound(e);
-		if(right == BST.end()) cerr << "BUG" << endl;
 		delete e;
 		return right;
 	};
 	for(uint j : order) {
-		Edge *e_in = in[j-start], *e_out = out[j-start];
+		Edge *e_in = in[j], *e_out = out[j];
 		uint i = e_in->a, k = e_out->b;
 		if(compY(j, i)) {
 			if(compY(j, k)) {
@@ -135,7 +135,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 			}
 		}
 	}
-	cerr << "Monotonic decompostion done" << endl;
+	// cerr << "Monotonic decompostion done" << endl;
 	
 	uint Es = out.size();
 	for(uint i = 0; i < Es; ++i) {
@@ -160,7 +160,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 		}
 		order.push_back(ey1);
 		uint n = order.size();
-		cerr << "monotone: " << n << endl;
+		// cerr << "monotone: " << n << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};
 		for(uint i = 2; i+1 < n; ++i) {
@@ -233,9 +233,9 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices, uint start) {
 		}
 		
 		for(Edge *e : order) e->next = nullptr;
-		cerr << "end of monotone" << endl;
+		// cerr << "end of monotone" << endl;
 	}
-	cerr << "END" << endl;
+	// cerr << "END" << endl;
 
 	for(Edge *e : out) delete e;
 }
