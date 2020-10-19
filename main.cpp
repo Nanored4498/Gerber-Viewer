@@ -1,24 +1,28 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <random>
 
 #include "glad.h"
 #include <GLFW/glfw3.h>
 
 #include "reader.h"
+#include "cvt.h"
 
 using namespace std;
 
 const int WIDTH = 1024, HEIGHT = 768;
 float X0=1e9, X1=-1e9, Y0=1e9, Y1=-1e9;
 uint shaderProgram;
+default_random_engine re;
+uniform_real_distribution<float> unif(0., 1.);
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
 	int centerLocation = glGetUniformLocation(shaderProgram, "center");
 	int ratioLocation = glGetUniformLocation(shaderProgram, "ratio");
 	int zoomLocation = glGetUniformLocation(shaderProgram, "zoom");
 	float ratio = (float) width / (float) height;
-	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.8f;
+	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.66f;
 	glUniform2f(centerLocation, (X0+X1)/2.f, (Y0+Y1)/2.f);
 	glUniform1f(ratioLocation, ratio);
 	glUniform1f(zoomLocation, zoom);
@@ -113,17 +117,20 @@ int main(int argc, char* argv[]) {
 	int colorLocation = glGetUniformLocation(shaderProgram, "color");
 
 	// Read input files
-	float colors[] = {1., .5, .2,
-					.2, .2, .8,
-					.8, .1, .2};
+	float drillColor[3] = {.2, .2, .8};
 	vector<Object> objects;
 	for(int i = 1; i < argc; ++i) {
 		string path = argv[i];
 		ifstream in(path);
 		if(in.is_open()) {
-			float *color0 = &colors[3 * ((i-1) % (sizeof(colors)/3/sizeof(float)))];
-			if(path.substr(path.size()-3) == "drl") readXNC(in, color0, objects);
-			else readGerber(in, color0, objects);
+			if(path.substr(path.size()-3) == "drl") readXNC(in, drillColor, objects);
+			else {
+				uint start = objects.size();
+				readGerber(in, drillColor, objects);
+				for(uint j = start; j < objects.size(); ++j)
+					for(uint c = 0; c < 3; ++c)
+						objects[j].color[c] = unif(re);
+			}
 			in.close();
 		} else cerr << "Can't open file: " << argv[i] << endl;
 	}
@@ -134,9 +141,18 @@ int main(int argc, char* argv[]) {
 	glClearColor(0.2, 0.25, 0.2, 1.0);
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
+	// CVT ???
+	jcv_rect rect = {{X0 - .1f*(X1-X0), Y0 - .1f*(Y1-Y0)},
+					{X1 + .1f*(X1-X0), Y1 + .1f*(Y1-Y0)}};
+	CVT cvt(&objects, rect);
+	cvt.solve();
+	vector<Object> cells;
+	cvt.getCells(cells);
+
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
+		for(const Object &o : cells) o.render(transLocation, colorLocation);
 		for(const Object &o : objects) o.render(transLocation, colorLocation);
 		glfwSwapBuffers(window);
 		glfwPollEvents();

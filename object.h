@@ -9,7 +9,7 @@ typedef unsigned int uint;
 class Object {
 public:
 
-	Object(std::vector<float> &vertices, std::vector<uint> &indices, float colors[3]);
+	Object(std::vector<float> &vertices, std::vector<uint> &indices, const float colors[3]);
 
 	void render(int center_uniform, int color_uniform) const;
 
@@ -21,10 +21,14 @@ public:
 		glDeleteBuffers(1, &EBO);
 	}
 
+	const std::vector<float>& getVertices() const { return vertices; }
+	size_t size() const { return vertices.size()/2; }
+
+	float center[2];
+	float color[3];
+
 private:
 	std::vector<float> vertices;
 	std::vector<uint> indices;
-	float center[2];
-	float color[3];
 	uint VAO, VBO, EBO;
 };

@@ -351,36 +351,4 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 		} else cerr << "Unknown word: " << s << endl;
 		in >> s;
 	}
-
-	// jcv_point points[N];
-	// for(uint i = 0; i < N; ++i) points[i] = {vertices[2*i], vertices[2*i+1]};
-	// jcv_rect rect = {{ans.x0 - .1*(ans.x1-ans.x0), ans.y0 - .1*(ans.y1-ans.y0)},
-	// 				{ans.x1 + .1*(ans.x1-ans.x0), ans.y1 + .1*(ans.y1-ans.y0)}};
-	// jcv_diagram diagram;
-	// memset(&diagram, 0, sizeof(jcv_diagram));
-	// jcv_diagram_generate(N, points, &rect, nullptr, &diagram);
-	// const jcv_site* sites = jcv_diagram_get_sites(&diagram);
-	// for(int i = 0; i < diagram.numsites; ++i) {
-	// 	const jcv_site* site = &sites[i];
-	// 	const jcv_graphedge* e = site->edges;
-	// 	int g = group[site->index];
-	// 	uint si = vertices.size()/2;
-	// 	vertices.push_back(site->p.x);
-	// 	vertices.push_back(site->p.y);
-	// 	for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
-	// 	while(e) {
-	// 		uint j = vertices.size()/2;
-	// 		vertices.push_back(e->pos[0].x);
-	// 		vertices.push_back(e->pos[0].y);
-	// 		for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
-	// 		vertices.push_back(e->pos[1].x);
-	// 		vertices.push_back(e->pos[1].y);
-	// 		for(int c = 0; c < 3; ++c) colors.push_back(cg[3*g+c]);
-	// 		indices.push_back(si);
-	// 		indices.push_back(j);
-	// 		indices.push_back(j+1);
-	// 		e = e->next;
-	// 	}
-	// }
-	// jcv_diagram_free(&diagram);
 }

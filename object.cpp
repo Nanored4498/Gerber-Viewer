@@ -2,7 +2,7 @@
 
 using namespace std;
 
-Object::Object(vector<float> &p_vertices, vector<uint> &p_indices, float p_color[3]) {
+Object::Object(vector<float> &p_vertices, vector<uint> &p_indices, const float p_color[3]) {
 	center[0] = 0;
 	center[1] = 0;
 	vertices = p_vertices;

@@ -22,6 +22,7 @@ if(USE_OPENMP AND OPENMP_FOUND)
 endif()
 
 find_package(glfw3 3.3 REQUIRED)
+find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 
 #-------#
 # Files #
@@ -32,6 +33,7 @@ set(SRCS
 	object.cpp
 	reader.cpp
 	triangulate.cpp
+	cvt.cpp
 	glad.c
 )
 
@@ -48,5 +50,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_executable(${PROJECT_NAME} ${SRCS})
 target_link_libraries(${PROJECT_NAME}
 	glfw
+	Eigen3::Eigen
 	${CMAKE_DL_LIBS}
 )
