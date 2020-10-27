@@ -273,6 +273,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 						coords.push_back(x);
 						coords.push_back(y);
 					}
+					// if(pred_path && cX == x && cY == y) in_path = true;
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
 					else {
@@ -360,10 +361,12 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 			}
 		}
 		if(bi == objs.size()) return objs.size();
-		float x0=0, x1=0, y0=0, y1=0;
+		float x0=objs[bi].center[0], x1=objs[bi].center[0], y0=objs[bi].center[1], y1=objs[bi].center[1];
 		objs[bi].update_bounding_box(x0, x1, y0, y1);
-		if(x < objs[bi].center[0] + x0 || x > objs[bi].center[0] + x1) return objs.size();
-		if(y < objs[bi].center[1] + y0 || y > objs[bi].center[1] + y1) return objs.size();
+		if(x < x0 || x > x1 || y < y0 || y > y1) {
+			// cerr << "not in the box " << x0 << " " << x1 << " " << y0 << " " << y1 << " " << x << " " << y << endl;
+			return objs.size();
+		}
 		return bi;
 	};
 	for(PrePath &pp : pre_paths) {
@@ -374,7 +377,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 		float x = pp.inter.back();
 		pp.inter.pop_back();
 		uint bi = find_nearest(x, y);
-		if(bi == objs.size()) continue;
+		if(bi == objs.size() || bi == ai) continue;
 		paths.emplace_back(objs[ai], objs[bi], pp.inter, pp.ap, pp.interpolation_mode);
 	}
 }
