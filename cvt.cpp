@@ -85,7 +85,7 @@ void CVT::solve() {
 	// Solver
 	LBFGSpp::LBFGSBParam<float> param;
 	param.epsilon = 1e-5;
-	param.max_iterations = 14;
+	param.max_iterations = 13;
 	LBFGSpp::LBFGSBSolver<float> solver(param);
 
 	// Bounds

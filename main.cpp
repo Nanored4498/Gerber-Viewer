@@ -22,7 +22,7 @@ void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
 	int ratioLocation = glGetUniformLocation(shaderProgram, "ratio");
 	int zoomLocation = glGetUniformLocation(shaderProgram, "zoom");
 	float ratio = (float) width / (float) height;
-	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.66f;
+	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.8f;
 	glUniform2f(centerLocation, (X0+X1)/2.f, (Y0+Y1)/2.f);
 	glUniform1f(ratioLocation, ratio);
 	glUniform1f(zoomLocation, zoom);
@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
 	// Read input files
 	float drillColor[3] = {.2, .2, .8};
 	vector<Object> objects;
+	vector<Path> paths;
 	for(int i = 1; i < argc; ++i) {
 		string path = argv[i];
 		ifstream in(path);
@@ -126,7 +127,7 @@ int main(int argc, char* argv[]) {
 			if(path.substr(path.size()-3) == "drl") readXNC(in, drillColor, objects);
 			else {
 				uint start = objects.size();
-				readGerber(in, drillColor, objects);
+				readGerber(in, drillColor, objects, paths);
 				for(uint j = start; j < objects.size(); ++j)
 					for(uint c = 0; c < 3; ++c)
 						objects[j].color[c] = unif(re);
@@ -142,12 +143,13 @@ int main(int argc, char* argv[]) {
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// CVT ???
-	jcv_rect rect = {{X0 - .1f*(X1-X0), Y0 - .1f*(Y1-Y0)},
-					{X1 + .1f*(X1-X0), Y1 + .1f*(Y1-Y0)}};
+	jcv_rect rect = {{X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0)},
+					{X1 + .05f*(X1-X0), Y1 + .05f*(Y1-Y0)}};
 	CVT cvt(&objects, rect);
-	cvt.solve();
+	// cvt.solve();
 	vector<Object> cells;
 	cvt.getCells(cells);
+	for(const Path &p : paths) objects.push_back(p.getObject());
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {

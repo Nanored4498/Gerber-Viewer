@@ -99,12 +99,16 @@ void readXNC(std::istream &in, float color0[3], vector<Object> &objs) {
 	}
 }
 
-struct Aperture {
-	string temp_name;
-	vector<double> parameters;
+struct PrePath {
+	float x0, y0;
+	vector<float> inter;
+	Aperture ap;
+	int interpolation_mode;
+	PrePath(float p_x0, float p_y0, const Aperture &p_ap, int mode):
+		x0(p_x0), y0(p_y0), ap(p_ap), interpolation_mode(mode) {}
 };
 
-void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
+void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<Path> &paths) {
 	double DIV_X = 1.0, DIV_Y = 1.0;
 	bool dark = true;
 	map<int, Aperture> apertures;
@@ -114,7 +118,9 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 	long long cX=0, cY=0;
 	vector<long long> coords;
 	vector<float> vertices;
+	vector<PrePath> pre_paths;
 	vector<uint> indices;
+	bool in_path = false;
 
 	const auto close_region = [&]() {
 		if(coords.size() >= 8) {
@@ -134,9 +140,13 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 		coords.clear();
 	};
 
+	uint obj_start = objs.size();
+
 	string s;
 	in >> s;
 	while(s != "M02*" && s != "M00*") {
+		bool pred_path = in_path;
+		in_path = false;
 		if(s == "G04") skipLine(in, '*');
 		else if(s.size() == 13 && s.substr(0, 6) == "%FSLAX" && s[8] == 'Y' && s[11] == '*' && s[12] == '%') {
 			if(s[7] == '4') DIV_X = 1e4;
@@ -233,6 +243,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 						*p.second = stoll(s.substr(ind, i-ind));
 					}
 				}
+				double xx = x/DIV_X, yy = y/DIV_Y;
 				char d = s[s.size()-2];
 				if(d == '1') {
 					if(in_region) {
@@ -241,36 +252,20 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 							coords.push_back(x);
 							coords.push_back(y);
 						}
-					} else { // outside region
-						vector<double> &params = apertures[ap_id].parameters;
-						if(apertures[ap_id].temp_name == "C") {
-							// if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
-							// if(interpolation_mode == 1) {
-							// 	double r = .5*params[0];
-							// 	double a0 = atan2(y-cY, x-cX);
-							// 	uint ind;
-							// 	long long xs[] = {cX, x}, ys[] = {cY, y};
-							// 	for(int j : {0, 1}) {
-							// 		ind = coords.size() / 2;
-							// 		for(int i = 0; i <= 12; ++i) {
-							// 			double a = 2*M_PI*i/24 + M_PI_2 + a0 + j*M_PI;
-							// 			add_point(xs[j] + r*cos(a)*DIV_X, ys[j] + r*sin(a)*DIV_Y, g);
-							// 			if(i < 12) {
-							// 				indices.push_back(ind + i);
-							// 				indices.push_back(ind + i+1);
-							// 				indices.push_back(ind + 13);
-							// 			}
-							// 		}
-							// 		add_point(xs[j], ys[j], g);
-							// 	}
-							// 	indices.push_back(ind-14);
-							// 	indices.push_back(ind-2);
-							// 	indices.push_back(ind);
-							// 	indices.push_back(ind-14);
-							// 	indices.push_back(ind);
-							// 	indices.push_back(ind+12);
-							// }
-						} else cerr << "The aperture " << apertures[ap_id].temp_name << " is not implemented for interpolations" << endl;
+					} else { // outside region !!!!!!
+						vertices.clear();
+						indices.clear();
+						if(interpolation_mode == 1) {
+							if(apertures[ap_id].temp_name != "C")
+								cerr << "The aperture " << apertures[ap_id].temp_name << " is not implemented for interpolations" << endl;
+							else {
+								if(apertures[ap_id].parameters.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+								in_path = true;
+								if(!pred_path) pre_paths.emplace_back(cX/DIV_X, cY/DIV_Y, apertures[ap_id], interpolation_mode);
+								pre_paths.back().inter.push_back(xx);
+								pre_paths.back().inter.push_back(yy);
+							}
+						} else cerr << "The interpolation mode " << interpolation_mode << " is not supported yet !" << endl;
 					}
 				} else if(d == '2') {
 					if(in_region) {
@@ -281,7 +276,6 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
 					else {
-						double xx = x/DIV_X, yy = y/DIV_Y;
 						vertices.clear();
 						indices.clear();
 						vector<double> &params = apertures[ap_id].parameters;
@@ -350,5 +344,37 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs) {
 			} else cerr << "No tool selected while executing the command: " << s << endl;
 		} else cerr << "Unknown word: " << s << endl;
 		in >> s;
+	}
+
+	// Paths
+	const auto find_nearest = [&](float x, float y)->uint {
+		double bd = 1e9;
+		uint bi = objs.size();
+		for(uint i = obj_start; i < objs.size(); ++i) {
+			double dx = x - objs[i].center[0];
+			double dy = y - objs[i].center[1];
+			double d = sqrt(dx*dx + dy*dy);
+			if(d < bd) {
+				bi = i;
+				bd = d;
+			}
+		}
+		if(bi == objs.size()) return objs.size();
+		float x0=0, x1=0, y0=0, y1=0;
+		objs[bi].update_bounding_box(x0, x1, y0, y1);
+		if(x < objs[bi].center[0] + x0 || x > objs[bi].center[0] + x1) return objs.size();
+		if(y < objs[bi].center[1] + y0 || y > objs[bi].center[1] + y1) return objs.size();
+		return bi;
+	};
+	for(PrePath &pp : pre_paths) {
+		uint ai = find_nearest(pp.x0, pp.y0);
+		if(ai == objs.size()) continue;
+		float y = pp.inter.back();
+		pp.inter.pop_back();
+		float x = pp.inter.back();
+		pp.inter.pop_back();
+		uint bi = find_nearest(x, y);
+		if(bi == objs.size()) continue;
+		paths.emplace_back(objs[ai], objs[bi], pp.inter, pp.ap, pp.interpolation_mode);
 	}
 }
