@@ -301,6 +301,14 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 							indices.push_back(1);
 							indices.push_back(2);
 							indices.push_back(3);
+							vertices.push_back(xx);
+							vertices.push_back(yy + h);
+							vertices.push_back(xx);
+							vertices.push_back(yy - h);
+							vertices.push_back(xx + w);
+							vertices.push_back(yy);
+							vertices.push_back(xx - w);
+							vertices.push_back(yy);
 						} else if(pcb.apertures[ap_id].temp_name == "O") {
 							double w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for obrounds" << endl;

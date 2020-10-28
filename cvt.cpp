@@ -25,26 +25,31 @@ inline jcv_point operator*(float a, const jcv_point &b) {
 	return {a*b.x, a*b.y};
 }
 
+#define STEPS 640.
+
 float CVT::operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad) {
+
+	float diag = std::sqrt(std::pow(box.max.x - box.min.x, 2.f) + std::pow(box.max.y - box.min.y, 2.f));
+	float space = diag / STEPS;
+
 	// Create array of points
-	uint N = 0;
-	for(const Object &o : *objs) N += o.size(); 
-	jcv_point *points = new jcv_point[N];
-	std::vector<uint> from(N);
-	uint j = 0;
-	for(uint i = 0; i < objs->size(); ++i) {
-		uint n = (*objs)[i].size();
+	std::vector<jcv_point> points;
+	std::vector<uint> from;
+	for(uint i = 0; i < pcb->objs.size(); ++i) {
+		uint n = pcb->objs[i].size();
 		for(uint k = 0; k < n; ++k) {
-			from[j] = i;
-			points[j].x = x(2*i) + (*objs)[i].getVertices()[2*k];
-			points[j++].y = x(2*i+1) + (*objs)[i].getVertices()[2*k+1];
+			from.push_back(i);
+			points.emplace_back();
+			points.back().x = x(2*i) + pcb->objs[i].getVertices()[2*k];
+			points.back().y = x(2*i+1) + pcb->objs[i].getVertices()[2*k+1];
 		}
 	}
+	int N = points.size();
 
 	// Compute diagram
 	jcv_diagram diagram;
 	memset(&diagram, 0, sizeof(jcv_diagram));
-	jcv_diagram_generate(N, points, &box, nullptr, &diagram);
+	jcv_diagram_generate(N, points.data(), &box, nullptr, &diagram);
 	const jcv_site* sites = jcv_diagram_get_sites(&diagram);
 
 	// computation
@@ -76,7 +81,6 @@ float CVT::operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad) {
 
 	// free
 	jcv_diagram_free(&diagram);
-	delete[] points;
 
 	return fx;
 }
@@ -89,56 +93,55 @@ void CVT::solve() {
 	LBFGSpp::LBFGSBSolver<float> solver(param);
 
 	// Bounds
-	uint N = objs->size()*2;
+	uint N = pcb->objs.size()*2;
 	Eigen::VectorXf lb(N), ub(N);
 	for(uint i = 0; i < N; ++i) {
 		float m = 1e9;
-		for(uint j = 0; j < (*objs)[i/2].size(); ++j) m = std::min(m, (*objs)[i/2].getVertices()[2*j+(i&1)]);
+		for(uint j = 0; j < pcb->objs[i/2].size(); ++j) m = std::min(m, pcb->objs[i/2].getVertices()[2*j+(i&1)]);
 		lb(i) = ((i&1) ? box.min.y : box.min.x) - m;
 	}
 	for(uint i = 0; i < N; ++i) {
 		float m = -1e9;
-		for(uint j = 0; j < (*objs)[i/2].size(); ++j) m = std::max(m, (*objs)[i/2].getVertices()[2*j+(i&1)]);
+		for(uint j = 0; j < pcb->objs[i/2].size(); ++j) m = std::max(m, pcb->objs[i/2].getVertices()[2*j+(i&1)]);
 		ub(i) = ((i&1) ? box.max.y : box.max.x) - m;
 	}
 
 	// start
 	Eigen::VectorXf x(N);
-	for(uint i = 0; i < N; ++i) x(i) = (*objs)[i/2].center[i&1];
+	for(uint i = 0; i < N; ++i) x(i) = pcb->objs[i/2].center[i&1];
 
 	// Minimize
 	float fx;
 	solver.minimize(*this, x, fx, lb, ub);
 
 	// Update centers
-	for(uint i = 0; i < N; ++i) (*objs)[i/2].center[i&1] = x(i);
+	for(uint i = 0; i < N; ++i) pcb->objs[i/2].center[i&1] = x(i);
 }
 
 void CVT::getCells(std::vector<Object> &cells) const {
 	// Create array of points
-	uint N = 0;
-	for(const Object &o : *objs) N += o.size(); 
-	jcv_point *points = new jcv_point[N];
-	std::vector<uint> from(N);
-	uint j = 0;
-	for(uint i = 0; i < objs->size(); ++i) {
-		uint n = (*objs)[i].size();
+	std::vector<jcv_point> points;
+	std::vector<uint> from;
+	for(uint i = 0; i < pcb->objs.size(); ++i) {
+		uint n = pcb->objs[i].size();
 		for(uint k = 0; k < n; ++k) {
-			from[j] = i;
-			points[j].x = (*objs)[i].center[0] + (*objs)[i].getVertices()[2*k];
-			points[j++].y = (*objs)[i].center[1] + (*objs)[i].getVertices()[2*k+1];
+			from.push_back(i);
+			points.emplace_back();
+			points.back().x = pcb->objs[i].center[0] + pcb->objs[i].getVertices()[2*k];
+			points.back().y = pcb->objs[i].center[1] + pcb->objs[i].getVertices()[2*k+1];
 		}
 	}
+	int N = points.size();
 
 	// Compute diagram
 	jcv_diagram diagram;
 	memset(&diagram, 0, sizeof(jcv_diagram));
-	jcv_diagram_generate(N, points, &box, nullptr, &diagram);
+	jcv_diagram_generate(N, points.data(), &box, nullptr, &diagram);
 	const jcv_site* sites = jcv_diagram_get_sites(&diagram);
 
 	// add cells
-	std::vector<std::vector<float>> vertices(objs->size());
-	std::vector<std::vector<uint>> indices(objs->size());
+	std::vector<std::vector<float>> vertices(pcb->objs.size());
+	std::vector<std::vector<uint>> indices(pcb->objs.size());
 	for(int i0 = 0; i0 < diagram.numsites; ++i0) {
 		const jcv_site *site = &sites[i0];
 		const jcv_graphedge *e = site->edges;
@@ -159,8 +162,8 @@ void CVT::getCells(std::vector<Object> &cells) const {
 		}
 	}
 	cells.clear();
-	for(uint i = 0; i < objs->size(); ++i) {
-		float col[3] = {(*objs)[i].color[0]*.7f, (*objs)[i].color[1]*.7f, (*objs)[i].color[2]*.7f};
+	for(uint i = 0; i < pcb->objs.size(); ++i) {
+		float col[3] = {pcb->objs[i].color[0]*.7f, pcb->objs[i].color[1]*.7f, pcb->objs[i].color[2]*.7f};
 		cells.emplace_back(vertices[i], indices[i], col);
 	}
 

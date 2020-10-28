@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
 	// CVT ???
 	jcv_rect rect = {{X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0)},
 					{X1 + .05f*(X1-X0), Y1 + .05f*(Y1-Y0)}};
-	CVT cvt(&pcb.objs, rect);
+	CVT cvt(&pcb, rect);
 	cvt.solve();
 	vector<Object> cells;
 	cvt.getCells(cells);

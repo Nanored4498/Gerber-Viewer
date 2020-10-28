@@ -8,8 +8,8 @@
 
 class CVT {
 public:
-	CVT(std::vector<Object> *p_objs, const jcv_rect &p_box):
-		objs(p_objs), box(p_box) {}
+	CVT(PCB *p_pcb, const jcv_rect &p_box):
+		pcb(p_pcb), box(p_box) {}
 
 	float operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad);
 
@@ -18,6 +18,6 @@ public:
 	void solve();
 
 private:
-	std::vector<Object> *objs;
+	PCB *pcb;
 	jcv_rect box;
 };
