@@ -118,24 +118,23 @@ int main(int argc, char* argv[]) {
 
 	// Read input files
 	float drillColor[3] = {.2, .2, .8};
-	vector<Object> objects;
-	vector<Path> paths;
+	PCB pcb;
 	for(int i = 1; i < argc; ++i) {
 		string path = argv[i];
 		ifstream in(path);
 		if(in.is_open()) {
-			if(path.substr(path.size()-3) == "drl") readXNC(in, drillColor, objects);
+			if(path.substr(path.size()-3) == "drl") readXNC(in, drillColor, pcb);
 			else {
-				uint start = objects.size();
-				readGerber(in, drillColor, objects, paths);
-				for(uint j = start; j < objects.size(); ++j)
+				uint start = pcb.objs.size();
+				readGerber(in, drillColor, pcb);
+				for(uint j = start; j < pcb.objs.size(); ++j)
 					for(uint c = 0; c < 3; ++c)
-						objects[j].color[c] = unif(re);
+						pcb.objs[j].color[c] = unif(re);
 			}
 			in.close();
 		} else cerr << "Can't open file: " << argv[i] << endl;
 	}
-	for(const Object &o : objects) o.update_bounding_box(X0, X1, Y0, Y1);
+	for(const Object &o : pcb.objs) o.update_bounding_box(X0, X1, Y0, Y1);
 
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -145,22 +144,22 @@ int main(int argc, char* argv[]) {
 	// CVT ???
 	jcv_rect rect = {{X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0)},
 					{X1 + .05f*(X1-X0), Y1 + .05f*(Y1-Y0)}};
-	CVT cvt(&objects, rect);
-	// cvt.solve();
+	CVT cvt(&pcb.objs, rect);
+	cvt.solve();
 	vector<Object> cells;
 	cvt.getCells(cells);
-	for(const Path &p : paths) objects.push_back(p.getObject());
+	pcb.computeEdgeObjects();
 
 	// Rendering loop
 	while(!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
 		for(const Object &o : cells) o.render(transLocation, colorLocation);
-		for(const Object &o : objects) o.render(transLocation, colorLocation);
+		pcb.render(transLocation, colorLocation);
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 
-	for(Object &o : objects) o.deleteBuffers();
+	pcb.clear();
 	glDeleteProgram(shaderProgram);
 	glfwTerminate();
 

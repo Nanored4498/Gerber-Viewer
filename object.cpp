@@ -61,18 +61,20 @@ void Object::update_bounding_box(float &x0, float &x1, float &y0, float &y1) con
 	}
 }
 
-Object Path::getObject() const {
-	if(ap.temp_name == "C") {
-		if(interpolation_mode == 1) {
-			vector<float> vertices;
-			vector<uint> indices;
-			for(uint k = 0; k <= inter.size(); k += 2) {
-				double r = .5*ap.parameters[0];
+void PCB::computeEdgeObjects() {
+	edges_obj.clear();
+	float color[3] = {.33, .33, .33};
+	for(const PCBEdge &e : edges) {
+		if(apertures[e.ap_id].temp_name == "C") {
+			if(e.interpolation_mode == 1) {
+				vector<float> vertices;
+				vector<uint> indices;
+				double r = .5*apertures[e.ap_id].parameters[0];
 				double xs[2], ys[2];
-				xs[0] = (k==0) ? a.center[0] : inter[k-2];
-				ys[0] = (k==0) ? a.center[1] : inter[k-1];
-				xs[1] = (k==inter.size()) ? b.center[0] : inter[k];
-				ys[1] = (k==inter.size()) ? b.center[1] : inter[k+1];
+				xs[0] = e.from >= 0 ? objs[e.from].center[0] : junctions[-e.from-1];
+				ys[0] = e.from >= 0 ? objs[e.from].center[1] : junctions[-e.from];
+				xs[1] = e.to >= 0 ? objs[e.to].center[0] : junctions[-e.to-1];
+				ys[1] = e.to >= 0 ? objs[e.to].center[1] : junctions[-e.to];
 				double a0 = atan2(ys[1]-ys[0], xs[1]-xs[0]);
 				for(int j : {0, 1}) {
 					uint ind = vertices.size() / 2;
@@ -89,16 +91,14 @@ Object Path::getObject() const {
 					vertices.push_back(xs[j]);
 					vertices.push_back(ys[j]);
 				}
-				indices.push_back(14*k+0);
-				indices.push_back(14*k+12);
-				indices.push_back(14*k+14);
-				indices.push_back(14*k+0);
-				indices.push_back(14*k+14);
-				indices.push_back(14*k+26);
+				indices.push_back(0);
+				indices.push_back(12);
+				indices.push_back(14);
+				indices.push_back(0);
+				indices.push_back(14);
+				indices.push_back(26);
+				edges_obj.emplace_back(vertices, indices, color);
 			}
-			float color[3];
-			for(int i = 0; i < 3; ++i) color[i] = .5 * (a.color[i] + b.color[i]);
-			return Object(vertices, indices, color);
 		}
 	}
 }

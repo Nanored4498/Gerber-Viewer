@@ -11,13 +11,14 @@
 #include "glad.h"
 
 using namespace std;
+typedef long long LL;
 
 void skipLine(istream &in, char end='\n') {
 	char c='0';
 	while(c != end && c != EOF) in.get(c);
 }
 
-void readXNC(std::istream &in, float color0[3], vector<Object> &objs) {
+void readXNC(std::istream &in, float color0[3], PCB &pcb) {
 	float SCALE = 1.0;
 	float tools[100];
 	for(int t = 0; t < 100; ++t) tools[t] = -1;
@@ -89,7 +90,7 @@ void readXNC(std::istream &in, float color0[3], vector<Object> &objs) {
 				}
 				vertices.push_back(x);
 				vertices.push_back(y);
-				objs.emplace_back(vertices, indices, color0);
+				pcb.objs.emplace_back(vertices, indices, color0);
 			}
 		} else {
 			cerr << "Unknown word: " << s << endl;
@@ -99,28 +100,29 @@ void readXNC(std::istream &in, float color0[3], vector<Object> &objs) {
 	}
 }
 
-struct PrePath {
-	float x0, y0;
-	vector<float> inter;
-	Aperture ap;
+struct Edge {
+	pair<LL, LL> from, to;
+	int ap;
 	int interpolation_mode;
-	PrePath(float p_x0, float p_y0, const Aperture &p_ap, int mode):
-		x0(p_x0), y0(p_y0), ap(p_ap), interpolation_mode(mode) {}
+	Edge(const pair<LL, LL> &p_from, const pair<LL, LL> &p_to, int p_ap, int p_mode):
+		from(p_from), to(p_to), ap(p_ap), interpolation_mode(p_mode) {}
 };
 
-void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<Path> &paths) {
+void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 	double DIV_X = 1.0, DIV_Y = 1.0;
 	bool dark = true;
-	map<int, Aperture> apertures;
 	int ap_id = -1;
 	char interpolation_mode = 1, quadrant = 0;
 	bool in_region = false;
-	long long cX=0, cY=0;
-	vector<long long> coords;
+	LL cX=0, cY=0;
+	map<int, uint> map_ap;
+	vector<LL> coords;
 	vector<float> vertices;
-	vector<PrePath> pre_paths;
 	vector<uint> indices;
-	bool in_path = false;
+	map<pair<LL, LL>, int> convert;
+	vector<Edge> edges;
+
+	uint obj_start = pcb.objs.size();
 
 	const auto close_region = [&]() {
 		if(coords.size() >= 8) {
@@ -134,19 +136,15 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 					vertices[i] = coords[i] / DIV_X;
 					vertices[i+1] = coords[i+1] / DIV_Y;
 				}
-				objs.emplace_back(vertices, indices, color0);
+				pcb.objs.emplace_back(vertices, indices, color0);
 			} else cerr << "The contour need to be closed when using command G37 !!";
 		}
 		coords.clear();
 	};
 
-	uint obj_start = objs.size();
-
 	string s;
 	in >> s;
 	while(s != "M02*" && s != "M00*") {
-		bool pred_path = in_path;
-		in_path = false;
 		if(s == "G04") skipLine(in, '*');
 		else if(s.size() == 13 && s.substr(0, 6) == "%FSLAX" && s[8] == 'Y' && s[11] == '*' && s[12] == '%') {
 			if(s[7] == '4') DIV_X = 1e4;
@@ -205,15 +203,14 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 						cerr << "The aperture " << ap_id << " is an obround and need to have 2, 3 or 4 parameters. Not " << np << endl;
 					}
 				}
-				if(good) apertures[aper_id] = ap;
+				if(good) {
+					map_ap[aper_id] = pcb.apertures.size();
+					pcb.apertures.push_back(ap);
+				}
 			}
-		} else if(s[0] == 'D' && s.back() == '*') {
+		} else if((s[0] == 'D' && s.back() == '*') || (s.substr(0, 4) == "G54D" && s.back() == '*')) {
 			int id = stoi(s.substr(1, s.size()-2));
-			if(apertures.count(id)) ap_id = id;
-			else cerr << "The aperture number " << id << " is not defined" << endl;
-		} else if(s.substr(0, 4) == "G54D" && s.back() == '*') {
-			int id = stoi(s.substr(4, s.size()-5));
-			if(apertures.count(id)) ap_id = id;
+			if(map_ap.count(id)) ap_id = map_ap[id];
 			else cerr << "The aperture number " << id << " is not defined" << endl;
 		} else if(s == "G01*") interpolation_mode = 1;
 		else if(s == "G02*") interpolation_mode = 2;
@@ -233,7 +230,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 			cerr << "Incremental notations is not supported !!" << endl;
 		} else if(s.size() >= 4 && s[s.size()-4] == 'D' && s[s.size()-3] == '0' && s.back() == '*') {
 			if(ap_id >= 0 || in_region) {
-				long long x = cX, y = cY;
+				LL x = cX, y = cY;
 				for(auto p : {make_pair('X', &x), make_pair('Y', &y)}) {
 					size_t ind = s.find(p.first);
 					if(ind != string::npos) {
@@ -256,14 +253,13 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 						vertices.clear();
 						indices.clear();
 						if(interpolation_mode == 1) {
-							if(apertures[ap_id].temp_name != "C")
-								cerr << "The aperture " << apertures[ap_id].temp_name << " is not implemented for interpolations" << endl;
+							if(pcb.apertures[ap_id].temp_name != "C")
+								cerr << "The aperture " << pcb.apertures[ap_id].temp_name << " is not implemented for interpolations" << endl;
 							else {
-								if(apertures[ap_id].parameters.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
-								in_path = true;
-								if(!pred_path) pre_paths.emplace_back(cX/DIV_X, cY/DIV_Y, apertures[ap_id], interpolation_mode);
-								pre_paths.back().inter.push_back(xx);
-								pre_paths.back().inter.push_back(yy);
+								if(pcb.apertures[ap_id].parameters.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
+								pair<LL, LL> from = {cX, cY}, to = {x, y};
+								convert[from] = convert[to] = 0;
+								edges.emplace_back(from, to, ap_id, interpolation_mode);
 							}
 						} else cerr << "The interpolation mode " << interpolation_mode << " is not supported yet !" << endl;
 					}
@@ -273,14 +269,13 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 						coords.push_back(x);
 						coords.push_back(y);
 					}
-					// if(pred_path && cX == x && cY == y) in_path = true;
 				} else if(d == '3') {
 					if(in_region) cerr << "Can't use operation D03 in a region statement: " << s << endl;
 					else {
 						vertices.clear();
 						indices.clear();
-						vector<double> &params = apertures[ap_id].parameters;
-						if(apertures[ap_id].temp_name == "C") {
+						vector<double> &params = pcb.apertures[ap_id].parameters;
+						if(pcb.apertures[ap_id].temp_name == "C") {
 							double r = .5 * params[0];
 							if(params.size() == 2) cerr << "Warning: holes are not implemented for circles" << endl;
 							for(uint i = 0; i < 24; ++i) {
@@ -293,7 +288,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 							}
 							vertices.push_back(xx);
 							vertices.push_back(yy);
-						} else if(apertures[ap_id].temp_name == "R") {
+						} else if(pcb.apertures[ap_id].temp_name == "R") {
 							double w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for rectangle" << endl;
 							for(double dx : {-w, w}) for(double dy : {-h, h}) {
@@ -306,7 +301,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 							indices.push_back(1);
 							indices.push_back(2);
 							indices.push_back(3);
-						} else if(apertures[ap_id].temp_name == "O") {
+						} else if(pcb.apertures[ap_id].temp_name == "O") {
 							double w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for obrounds" << endl;
 							double dhw = abs(h - w);
@@ -337,7 +332,7 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 							indices.push_back(14);
 							indices.push_back(26);
 						}
-						if(!indices.empty()) objs.emplace_back(vertices, indices, color0);
+						if(!indices.empty()) pcb.objs.emplace_back(vertices, indices, color0);
 					}
 				} else cerr << "Unknown operation: " << d << endl;
 				cX = x;
@@ -348,36 +343,31 @@ void readGerber(std::istream &in, float color0[3], vector<Object> &objs, vector<
 	}
 
 	// Paths
-	const auto find_nearest = [&](float x, float y)->uint {
+	for(pair<const pair<LL, LL>, int> &p : convert) {
+		float x = p.first.first/DIV_X, y = p.first.second/DIV_Y;
 		double bd = 1e9;
-		uint bi = objs.size();
-		for(uint i = obj_start; i < objs.size(); ++i) {
-			double dx = x - objs[i].center[0];
-			double dy = y - objs[i].center[1];
+		p.second = -1;
+		for(int i = obj_start; i < (int) pcb.objs.size(); ++i) {
+			double dx = x - pcb.objs[i].center[0];
+			double dy = y - pcb.objs[i].center[1];
 			double d = sqrt(dx*dx + dy*dy);
 			if(d < bd) {
-				bi = i;
+				p.second = i;
 				bd = d;
 			}
 		}
-		if(bi == objs.size()) return objs.size();
-		float x0=objs[bi].center[0], x1=objs[bi].center[0], y0=objs[bi].center[1], y1=objs[bi].center[1];
-		objs[bi].update_bounding_box(x0, x1, y0, y1);
-		if(x < x0 || x > x1 || y < y0 || y > y1) {
-			// cerr << "not in the box " << x0 << " " << x1 << " " << y0 << " " << y1 << " " << x << " " << y << endl;
-			return objs.size();
+		if(p.second >= 0) {
+			float x0 = pcb.objs[p.second].center[0], x1 = pcb.objs[p.second].center[0];
+			float y0 = pcb.objs[p.second].center[1], y1 = pcb.objs[p.second].center[1];
+			pcb.objs[p.second].update_bounding_box(x0, x1, y0, y1);
+			if(x < x0 || x > x1 || y < y0 || y > y1) p.second = -1;
 		}
-		return bi;
-	};
-	for(PrePath &pp : pre_paths) {
-		uint ai = find_nearest(pp.x0, pp.y0);
-		if(ai == objs.size()) continue;
-		float y = pp.inter.back();
-		pp.inter.pop_back();
-		float x = pp.inter.back();
-		pp.inter.pop_back();
-		uint bi = find_nearest(x, y);
-		if(bi == objs.size() || bi == ai) continue;
-		paths.emplace_back(objs[ai], objs[bi], pp.inter, pp.ap, pp.interpolation_mode);
+		if(p.second == -1) {
+			p.second = -pcb.junctions.size()-1;
+			pcb.junctions.push_back(x);
+			pcb.junctions.push_back(y);
+		}
 	}
+	for(const Edge &e : edges) if(convert[e.from] != convert[e.to])
+		pcb.edges.emplace_back(convert[e.from], convert[e.to], e.ap, e.interpolation_mode);
 }

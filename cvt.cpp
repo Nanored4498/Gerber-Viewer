@@ -158,6 +158,7 @@ void CVT::getCells(std::vector<Object> &cells) const {
 			e = e->next;
 		}
 	}
+	cells.clear();
 	for(uint i = 0; i < objs->size(); ++i) {
 		float col[3] = {(*objs)[i].color[0]*.7f, (*objs)[i].color[1]*.7f, (*objs)[i].color[2]*.7f};
 		cells.emplace_back(vertices[i], indices[i], col);

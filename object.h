@@ -38,16 +38,38 @@ private:
 	size_t indices_size;
 };
 
-class Path {
-public:
-	Path(Object &p_a, Object &p_b, const std::vector<float> &p_inter, const Aperture &p_ap, int p_interpolation_mode=1):
-		a(p_a), b(p_b), inter(p_inter), ap(p_ap), interpolation_mode(p_interpolation_mode) {}
+struct PCBEdge {
+	int from, to;
+	int ap_id;
+	int interpolation_mode;
+	PCBEdge(int p_from, int p_to, int p_ap_id, int p_mode):
+		from(p_from), to(p_to), ap_id(p_ap_id), interpolation_mode(p_mode) {}
+};
 
-	Object getObject() const;
+class PCB {
+public:
+	void computeEdgeObjects();
+
+	void render(int transLocation, int colorLocation) {
+		for(const Object &o : objs) o.render(transLocation, colorLocation);
+		for(const Object &o : edges_obj) o.render(transLocation, colorLocation);
+	}
+
+	void clear() {
+		for(Object &o : objs) o.deleteBuffers();
+		for(Object &o : edges_obj) o.deleteBuffers();
+		objs.clear();
+		apertures.clear();
+		junctions.clear();
+		edges.clear();
+		edges_obj.clear();
+	}
+
+	std::vector<Object> objs;
+	std::vector<Aperture> apertures;
+	std::vector<float> junctions;
+	std::vector<PCBEdge> edges;
 
 private:
-	Object &a, &b;
-	std::vector<float> inter;
-	Aperture ap;
-	int interpolation_mode;
+	std::vector<Object> edges_obj;
 };
