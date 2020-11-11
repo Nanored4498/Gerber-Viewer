@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 	glClearColor(0.2, 0.25, 0.2, 1.0);
-	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// CVT ???
 	jcv_rect rect = {{X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0)},

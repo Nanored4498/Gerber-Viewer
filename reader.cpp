@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <map>
+#include <algorithm>
 
 #include "triangulate.h"
 
@@ -376,6 +377,35 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 			pcb.junctions.push_back(y);
 		}
 	}
-	for(const Edge &e : edges) if(convert[e.from] != convert[e.to])
+	uint i = 0;
+	while(i < edges.size()) {
+		if(convert[edges[i].from] == convert[edges[i].to]) {
+			swap(edges[i], edges.back());
+			edges.pop_back();
+		} else {
+			if(convert[edges[i].from] > convert[edges[i].to]) swap(edges[i].from, edges[i].to);
+			++ i;
+		}
+	}
+	sort(edges.begin(), edges.end(), [&](const Edge &a, const Edge &b) {
+		int ia = convert[a.from], ib = convert[b.from];
+		if(ia == ib) {
+			ia = convert[a.to], ib = convert[b.to];
+			if(ia == ib) {
+				return a.ap < b.ap || (a.ap == b.ap && a.interpolation_mode < b.interpolation_mode);
+			} else return ia < ib;
+		} else return ia < ib;
+	});
+	i = 1;
+	while(i < edges.size()) {
+		if(convert[edges[i].from] == convert[edges[i-1].from]
+				&& convert[edges[i].to] == convert[edges[i-1].to]
+				&& edges[i].ap == edges[i-1].ap
+				&& edges[i].interpolation_mode == edges[i-1].interpolation_mode) {
+			swap(edges[i], edges.back());
+			edges.pop_back();
+		} else ++ i;
+	}
+	for(const Edge &e : edges)
 		pcb.edges.emplace_back(convert[e.from], convert[e.to], e.ap, e.interpolation_mode);
 }

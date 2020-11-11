@@ -82,26 +82,17 @@ float CVT::operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad) {
 		v /= d;
 		jcv_point h = {-r*v.y, r*v.x}; // orthogonal vector
 		int n = (d - space) / space; // number of intermediate seeds
+		if(n&1) ++n;
 		float sp = d / (n+1); // spacing between seeds
 		// create seeds
 		for(int i = 1; i <= n; ++i) {
-			if(2*i-1 == n) {
-				points.push_back(a + (i-.1)*sp*v + h);
-				points.push_back(a + (i+.1)*sp*v + h);
-				from.push_back(e.from);
-				from.push_back(e.to);
-				points.push_back(a + (i-.1)*sp*v - h);
-				points.push_back(a + (i+.1)*sp*v - h);
-				from.push_back(e.from);
-				from.push_back(e.to);
-			} else {
-				points.push_back(a + i*sp*v + h);
-				from.push_back(2*i <= n ? e.from : e.to);
-				points.push_back(a + i*sp*v - h);
-				from.push_back(2*i <= n ? e.from : e.to);
-			}
+			points.push_back(a + i*sp*v + h);
+			from.push_back(2*i <= n ? e.from : e.to);
+			points.push_back(a + i*sp*v - h);
+			from.push_back(2*i <= n ? e.from : e.to);
 		}
 		// energy
+		// orthogonal ditance
 		h.x = e.from < 0 ? pcb->junctions[-e.from] : pcb->objs[e.from].center[1];
 		h.x -= e.to < 0 ? pcb->junctions[-e.to] : pcb->objs[e.to].center[1];
 		h.y = e.to < 0 ? pcb->junctions[-e.to-1] : pcb->objs[e.to].center[0];
@@ -114,8 +105,30 @@ float CVT::operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad) {
 		else { grad(2*e.from) -= tot_area*d*h.x; grad(2*e.from+1) -= tot_area*d*h.y; }
 		if(e.to < 0) { grad(no-e.to-1) += tot_area*d*h.x; grad(no-e.to) += tot_area*d*h.y; }
 		else { grad(2*e.to) += tot_area*d*h.x; grad(2*e.to+1) += tot_area*d*h.y; }
+		// dot with v
+		// float coeff = tot_area * nh*nh;
+		// v = {h.y, -h.x};
+		// h = b-a;
+		// d = jcv_norm(h);
+		// h /= d;
+		// float hv = jcv_dot(h, v);
+		// float dif = hv - 1.;
+		// fx += .5 * coeff * dif*dif;
+		// jcv_point gr = coeff * dif * (v - hv*h) / d;
+		// if(e.from < 0) { grad(no-e.from-1) -= gr.x; grad(no-e.from) -= gr.y; }
+		// else { grad(2*e.from) -= gr.x; grad(2*e.from+1) -= gr.y; }
+		// if(e.to < 0) { grad(no-e.to-1) += gr.x; grad(no-e.to) += gr.y; }
+		// else { grad(2*e.to) += gr.x; grad(2*e.to+1) += gr.y; }
+
 	}
 	int N = points.size();
+	// for(int i = 0; i < N; ++i) {
+	// 	for(int j = 0; j < i; ++j) {
+	// 		if(points[i].x == points[j].x && points[i].y == points[j].y) {
+	// 			std::cerr << "AAAIIIIEEEE !!!!!! " << i << " " << j << " " << from[i] << " " << from[j] << std::endl;
+	// 		}
+	// 	}
+	// }
 
 	// Compute diagram
 	jcv_diagram diagram;
@@ -147,7 +160,7 @@ float CVT::operator()(const Eigen::VectorXf &x, Eigen::VectorXf &grad) {
 		C.y = i < 0 ? x(no-i) : x(2*i+1);
 		fx += m2.x - 2*m.x*C.x + area*C.x*C.x;
 		fx += m2.y - 2*m.y*C.y + area*C.y*C.y;
-		if(std::abs(area*C.x - m.x) > 1e4) {
+		if(std::abs(area*C.x - m.x) > 1e3) {
 			std::cerr << "BUUUUUUUUUUUUUUUG " << area << " " << tot_area << std::endl;
 			std::cerr << C << " " << c << " " << box.min << " " << box.max << std::endl;
 			e = site->edges;
@@ -178,7 +191,7 @@ void CVT::solve() {
 	// Solver
 	LBFGSpp::LBFGSBParam<float> param;
 	param.epsilon = 1e-5;
-	param.max_iterations = 18;
+	param.max_iterations = 60;
 	LBFGSpp::LBFGSBSolver<float> solver(param);
 
 	// Bounds
@@ -246,23 +259,13 @@ void CVT::getCells(std::vector<Object> &cells) const {
 		v /= d;
 		jcv_point h = {-r*v.y, r*v.x};
 		int n = (d - space) / space;
+		if(n&1) ++n;
 		float sp = d / (n+1);
 		for(int i = 1; i <= n; ++i) {
-			if(2*i-1 == n) {
-				points.push_back(a + (i-.1)*sp*v + h);
-				points.push_back(a + (i+.1)*sp*v + h);
-				from.push_back(e.from);
-				from.push_back(e.to);
-				points.push_back(a + (i-.1)*sp*v - h);
-				points.push_back(a + (i+.1)*sp*v - h);
-				from.push_back(e.from);
-				from.push_back(e.to);
-			} else {
-				points.push_back(a + i*sp*v + h);
-				from.push_back(2*i <= n ? e.from : e.to);
-				points.push_back(a + i*sp*v - h);
-				from.push_back(2*i <= n ? e.from : e.to);
-			}
+			points.push_back(a + i*sp*v + h);
+			from.push_back(2*i <= n ? e.from : e.to);
+			points.push_back(a + i*sp*v - h);
+			from.push_back(2*i <= n ? e.from : e.to);
 		}
 	}
 	int N = points.size();
@@ -277,18 +280,10 @@ void CVT::getCells(std::vector<Object> &cells) const {
 	std::cerr << diagram.numsites << " " << N << std::endl;
 	std::vector<std::vector<float>> vertices(pcb->objs.size() + pcb->junctions.size()/2);
 	std::vector<std::vector<uint>> indices(pcb->objs.size() + pcb->junctions.size()/2);
-	// int i = 0;
 	for(int i0 = 0; i0 < diagram.numsites; ++i0) {
 		const jcv_site *site = &sites[i0];
 		const jcv_graphedge *e = site->edges;
 		const int i = from[site->index] < 0 ? pcb->objs.size()+(-from[site->index]-1)/2 : from[site->index];
-		// float area = 0;
-		// while(e) {
-			// area += .5 * abs(jcv_det(e->pos[0]-site->p, e->pos[1]-site->p));
-			// e = e->next;
-		// }
-		// if(area < 1e3) continue;
-		// e = site->edges;
 		uint s = vertices[i].size()/2;
 		vertices[i].push_back(site->p.x);
 		vertices[i].push_back(site->p.y);
@@ -303,7 +298,6 @@ void CVT::getCells(std::vector<Object> &cells) const {
 			indices[i].push_back(t+1);
 			e = e->next;
 		}
-		// ++i;
 	}
 	cells.clear();
 	for(uint i = 0; i < pcb->objs.size(); ++i) {
