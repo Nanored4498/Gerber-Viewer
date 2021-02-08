@@ -20,26 +20,26 @@ uint shaderProgram;
 default_random_engine re;
 uniform_real_distribution<float> unif(0., 1.);
 
-void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
+void framebufferSizeCallback(GLFWwindow*, int width, int height) {
 	ratio = (float) width / (float) height;
 	glUniform1f(glGetUniformLocation(shaderProgram, "ratio"), ratio);
 	glViewport(0, 0, width, height);
 }
 
-void getCoord(GLFWwindow* window, float &x, float &y) {
+void getCoord(GLFWwindow* window, double x0, double y0, float &x, float &y) {
 	int W, H;
 	glfwGetWindowSize(window, &W, &H);
-	double x0, y0;
-	glfwGetCursorPos(window, &x0, &y0);
 	x = cX + (2.f*x0/W - 1.f) * zoom;
 	y = cY + (1.f - 2.f*y0/H) * zoom / ratio;
 }
 
-void mouseButtonCallBack(GLFWwindow* window, int button, int action, int mods) {
+void mouseButtonCallBack(GLFWwindow* window, int button, int action, int) {
 	if(button == GLFW_MOUSE_BUTTON_LEFT) {
 		if(action == GLFW_PRESS) {
 			left_pressed = true;
-			getCoord(window, pressX, pressY);
+			double x0, y0;
+			glfwGetCursorPos(window, &x0, &y0);
+			getCoord(window, x0, y0, pressX, pressY);
 		} else left_pressed = false;
 	}
 }
@@ -47,13 +47,13 @@ void mouseButtonCallBack(GLFWwindow* window, int button, int action, int mods) {
 void cursorPositionCallback(GLFWwindow* window, double x, double y) {
 	if(!left_pressed) return;
 	float x2, y2;
-	getCoord(window, x2, y2);
+	getCoord(window, x, y, x2, y2);
 	cX += pressX - x2;
 	cY += pressY - y2;
 	glUniform2f(glGetUniformLocation(shaderProgram, "center"), cX, cY);
 }
 
-void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+void scrollCallback(GLFWwindow*, double, double yoffset) {
 	zoom *= std::pow(1.1, -yoffset);
 	glUniform1f(glGetUniformLocation(shaderProgram, "zoom"), zoom);
 }

@@ -3,13 +3,9 @@
 #include <iostream>
 #include <map>
 #include <algorithm>
+#include <cmath>
 
 #include "triangulate.h"
-
-#define JC_VORONOI_IMPLEMENTATION
-#include "jc_voronoi.h"
-
-#include "glad.h"
 
 using namespace std;
 typedef long long LL;
@@ -23,7 +19,6 @@ void readXNC(std::istream &in, float color0[3], PCB &pcb) {
 	float SCALE = 1.0;
 	float tools[100];
 	for(int t = 0; t < 100; ++t) tools[t] = -1;
-	bool incremental = false;
 	bool drill = true;
 	vector<float> vertices;
 	vector<uint> indices;
@@ -59,9 +54,7 @@ void readXNC(std::istream &in, float color0[3], PCB &pcb) {
 	// body
 	int T = -1;
 	while(s != "M30") {
-		if(s == "G90") incremental = false;
-		else if(s == "G91") incremental = true;
-		else if(s == "G00") drill = false;
+		if(s == "G00") drill = false;
 		else if(s == "G05") drill = true;
 		else if(s[0] == 'T') {
 			int t = atoi(s.c_str()+1);
@@ -111,9 +104,8 @@ struct Edge {
 
 void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 	double DIV_X = 1.0, DIV_Y = 1.0;
-	bool dark = true;
 	int ap_id = -1;
-	char interpolation_mode = 1, quadrant = 0;
+	char interpolation_mode = 1;
 	bool in_region = false;
 	LL cX=0, cY=0;
 	map<int, uint> map_ap;
@@ -162,11 +154,9 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 			// We don't care about the unit
 		} else if(s.size() == 6 && s.substr(0, 3) == "%LP" && s[4] == '*' && s[5] == '%') {
 			char polarity = s[3];
-			if(polarity == 'D') dark = true;
-			else if(polarity == 'C') {
-				dark = false;
+			if(polarity == 'C') {
 				cerr << "Warning: Clear polarity mode is not implemented !!" << endl;
-			} else cerr << "Unknown polarity: " << polarity << endl;
+			} else if(polarity != 'D') cerr << "Unknown polarity: " << polarity << endl;
 		} else if(s.substr(0, 4) == "%ADD" && s[s.size()-2] == '*' && s.back() == '%') {
 			size_t temp_ind = 4;
 			while(s[temp_ind] >= '0' && s[temp_ind] <= '9') ++ temp_ind;

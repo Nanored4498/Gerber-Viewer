@@ -6,20 +6,11 @@ cmake_minimum_required(VERSION 3.14)
 # OPTION #
 #--------#
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wextra")
-option(USE_OPENMP "OpenMP?"      OFF)
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
 #----------#
 # Packages #
 #----------#
-
-if(USE_OPENMP)
-    find_package(OpenMP)
-endif(USE_OPENMP)
-if(USE_OPENMP AND OPENMP_FOUND)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-endif()
 
 find_package(glfw3 3.3 REQUIRED)
 find_package (Eigen3 3.3 REQUIRED NO_MODULE)

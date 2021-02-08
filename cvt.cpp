@@ -1,3 +1,4 @@
+#define JC_VORONOI_IMPLEMENTATION
 #include "cvt.h"
 
 #include <iostream>
