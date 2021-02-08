@@ -54,7 +54,6 @@ void cursorPositionCallback(GLFWwindow* window, double x, double y) {
 }
 
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
-	std::cerr << xoffset << " " << yoffset << std::endl;
 	zoom *= std::pow(1.1, -yoffset);
 	glUniform1f(glGetUniformLocation(shaderProgram, "zoom"), zoom);
 }
@@ -202,6 +201,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	pcb.clear();
+	for(Object &o : cells) o.deleteBuffers();
 	glDeleteProgram(shaderProgram);
 	glfwTerminate();
 
