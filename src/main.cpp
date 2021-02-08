@@ -182,10 +182,14 @@ int main(int argc, char* argv[]) {
 	glClearColor(0.16, 0.2, 0.16, 1.0);
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-	// CVT ???
-	jcv_rect rect = {{X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0)},
-					{X1 + .05f*(X1-X0), Y1 + .05f*(Y1-Y0)}};
-	CVT cvt(&pcb, rect);
+	// CVT
+	vector<vector<float>> boundary {{
+		X0 - .05f*(X1-X0), Y0 - .05f*(Y1-Y0),
+		X0 - .05f*(X1-X0), Y1 + .05f*(Y1-Y0),
+		X1 + .05f*(X1-X0), Y1 + .05f*(Y1-Y0),
+		X1 + .05f*(X1-X0), Y0 - .05f*(Y1-Y0)
+	}};
+	CVT cvt(&pcb, std::move(boundary));
 	cvt.solve();
 	vector<Object> cells;
 	cvt.getCells(cells);

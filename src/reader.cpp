@@ -273,33 +273,21 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 								double a = (2*M_PI*i)/24;
 								vertices.push_back(xx + r*cos(a));
 								vertices.push_back(yy + r*sin(a));
-								indices.push_back(i);
-								indices.push_back(((i+1) % 24));
-								indices.push_back(24);
+								if(i > 1) {
+									indices.push_back(0);
+									indices.push_back(i-1);
+									indices.push_back(i);
+								}
 							}
-							vertices.push_back(xx);
-							vertices.push_back(yy);
 						} else if(pcb.apertures[ap_id].temp_name == "R") {
 							double w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for rectangle" << endl;
-							for(double dx : {-w, w}) for(double dy : {-h, h}) {
-								vertices.push_back(xx + dx);
-								vertices.push_back(yy + dy);
-							}
-							indices.push_back(0);
-							indices.push_back(1);
-							indices.push_back(2);
-							indices.push_back(1);
-							indices.push_back(2);
-							indices.push_back(3);
-							vertices.push_back(xx);
-							vertices.push_back(yy + h);
-							vertices.push_back(xx);
-							vertices.push_back(yy - h);
-							vertices.push_back(xx + w);
-							vertices.push_back(yy);
-							vertices.push_back(xx - w);
-							vertices.push_back(yy);
+							vertices.push_back(xx - w); vertices.push_back(yy - h);
+							vertices.push_back(xx + w); vertices.push_back(yy - h);
+							vertices.push_back(xx + w); vertices.push_back(yy + h);
+							vertices.push_back(xx - w); vertices.push_back(yy + h);
+							indices.push_back(0); indices.push_back(1); indices.push_back(2);
+							indices.push_back(0); indices.push_back(2); indices.push_back(3);
 						} else if(pcb.apertures[ap_id].temp_name == "O") {
 							double w = .5*params[0], h = .5*params[1];
 							if(params.size() == 3) cerr << "Warning: holes are not implemented for obrounds" << endl;

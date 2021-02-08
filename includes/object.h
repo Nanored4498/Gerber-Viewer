@@ -27,6 +27,8 @@ public:
 	}
 
 	const std::vector<float>& getVertices() const { return vertices; }
+	float getX(int i) const { return vertices[2*i]; }
+	float getY(int i) const { return vertices[2*i+1]; }
 	size_t size() const { return vertices.size()/2; }
 
 	float center[2];

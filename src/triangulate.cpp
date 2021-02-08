@@ -26,6 +26,10 @@ struct Edge {
 };
 
 void triangulate(const vector<ll> &coords, vector<uint> &indices) {
+	if(coords.size() == 6) {
+		indices = {0u, 1u, 2u};
+		return;
+	}
 	indices.clear();
 	size_t N = coords.size()/2;
 	const auto compY = [&](const uint i, const uint j)->bool {
