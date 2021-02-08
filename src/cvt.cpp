@@ -127,41 +127,51 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 	crs.clear();
 
 	// Compute edge segments
-	// for(const PCBEdge &e : pcb->edges) {
-	// 	uint i0 = e.from < 0 ? 2*objs.size()-e.from-1 : 2*e.from;
-	// 	uint i1 = e.to < 0 ? 2*objs.size()-e.to-1 : 2*e.to;
-	// 	Vec2 a(x(i0), x(i0+1)), b(x(i1), x(i1+1));
-	// 	double u = 0., v = 1.;
-	// 	if(e.from >= 0) {
-	// 		double t = 1.;
-	// 		uint j = 0;
-	// 		for(uint k = 0; k < objs[e.from].size(); ++k) {
-	// 			uint l = (k+1) % objs[e.from].size();
-	// 			if(intersect(b, a, objs[e.from][k], objs[e.from][l], t)) j = k;
-	// 		}
-	// 		a = b + t * (a - b);
-	// 		objs[e.from].insert(objs[e.from].begin() + j, a);
-	// 		u = 1. - t;
-	// 	}
-	// 	if(e.to >= 0) {
-	// 		double t = 1.;
-	// 		uint j = 0;
-	// 		for(uint k = 0; k < objs[e.to].size(); ++k) {
-	// 			uint l = (k+1) % objs[e.to].size();
-	// 			if(intersect(a, b, objs[e.to][k], objs[e.to][l], t)) j = k;
-	// 		}
-	// 		b = a + t * (b - a);
-	// 		objs[e.to].insert(objs[e.to].begin() + j, b);
-	// 		v = t + (1. - t) * u;
-	// 	}
-	// 	segments.emplace_back(scale * (a - mid), scale * (b - mid));
-	// 	crs.emplace_back(i0, i1, u, v);
-	// }
+	for(const PCBEdge &e : pcb->edges) {
+		uint i0 = e.from < 0 ? 2*objs.size()-e.from-1 : 2*e.from;
+		uint i1 = e.to < 0 ? 2*objs.size()-e.to-1 : 2*e.to;
+		Vec2 a(x(i0), x(i0+1)), b(x(i1), x(i1+1));
+		double u = 0., v = 1.;
+		if(e.from >= 0) {
+			double t = 1.;
+			uint j = 0;
+			for(uint k = 0; k < objs[e.from].size(); ++k) {
+				uint l = (k+1) % objs[e.from].size();
+				if(intersect(b, a, objs[e.from][k], objs[e.from][l], t)) j = k;
+			}
+			uint k = (j+1) % objs[e.from].size();
+			a = b + t * (a - b);
+			if(std::abs(std::round(scale * (a.x - objs[e.from][j].x))) + std::abs(std::round(scale * (a.y - objs[e.from][j].y))) <= 5)
+				a = objs[e.from][j];
+			else if(std::abs(std::round(scale * (a.x - objs[e.from][k].x))) + std::abs(std::round(scale * (a.y - objs[e.from][k].y)) <= 5))
+				a = objs[e.from][k];
+			else
+				objs[e.from].insert(objs[e.from].begin() + j+1, a);
+			u = 1. - t;
+		}
+		if(e.to >= 0) {
+			double t = 1.;
+			uint j = 0;
+			for(uint k = 0; k < objs[e.to].size(); ++k) {
+				uint l = (k+1) % objs[e.to].size();
+				if(intersect(a, b, objs[e.to][k], objs[e.to][l], t)) j = k;
+			}
+			uint k = (j+1) % objs[e.to].size();
+			b = a + t * (b - a);
+			if(std::abs(std::round(scale * (b.x - objs[e.to][j].x))) + std::abs(std::round(scale * (b.y - objs[e.to][j].y))) <= 5)
+				b = objs[e.to][j];
+			else if(std::abs(std::round(scale * (b.x - objs[e.to][k].x))) + std::abs(std::round(scale * (b.y - objs[e.to][k].y)) <= 5))
+				b = objs[e.to][k];
+			else
+				objs[e.to].insert(objs[e.to].begin() + j+1, b);
+			v = t + (1. - t) * u;
+		}
+		segments.emplace_back(scale * (a - mid), scale * (b - mid));
+		crs.emplace_back(i0, i1, u, v);
+	}
 
 	// Compute object segments
 	for(uint i = 0; i < objs.size(); ++i) {
-		std::cerr << objs[i].size() << std::endl;
-		// if(objs[i].size() != 26) continue;
 		for(Vec2 &v : objs[i]) v = scale * (v - mid);
 		for(uint j = 0; j < objs[i].size(); ++j) {
 			uint k = (j+1) % objs[i].size();
@@ -257,7 +267,6 @@ void CVT::getCells(std::vector<Object> &cells) {
 		if(vd_c.is_degenerate()) continue;
 		if(vd_c.source_category() == boost::polygon::SOURCE_CATEGORY_SINGLE_POINT) continue; // it is one of the four points added
 		uint ind = vd_c.source_index()-4;
-		std::cerr << "HERE" << std::endl;
 
 		// Create polygon cell
 		ClipperLib::Paths ps(1);
@@ -266,19 +275,15 @@ void CVT::getCells(std::vector<Object> &cells) {
 		do {
 			addCurvedEdge(ind, e, segments, p, 4);
 			p.emplace_back(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
-			std::cerr << p.back().X << " " << p.back().Y << std::endl;
 			e = e->prev();
 		} while(e != vd_c.incident_edge());
-		std::cerr << "HERE2" << std::endl;
 	
 		// We clip with the border
 		ClipperLib::Paths clipped;
 		ClipperLib::Clipper cl;
-		for(const ClipperLib::IntPoint &v : p) std::cerr << v.X << " " << v.Y << std::endl;
 		cl.AddPaths(ps, ClipperLib::ptSubject, true);
 		cl.AddPaths(border, ClipperLib::ptClip, true);
 		cl.Execute(ClipperLib::ctIntersection, clipped, ClipperLib::pftNonZero, ClipperLib::pftNonZero);
-		std::cerr << "HERE3" << std::endl;
 
 		float col[3];
 		if(crs[ind].i == crs[ind].j) {
@@ -289,7 +294,6 @@ void CVT::getCells(std::vector<Object> &cells) {
 			float c = 0.1f + 0.1f * unif(re);
 			for(int i = 0; i < 3; ++i) col[i] = c + 0.05f * unif(re);
 		}
-		std::cerr << "HERE4" << std::endl;
 		for(const ClipperLib::Path &P : clipped) {
 			vertices[ind].clear();
 			std::vector<long long> vll;
@@ -297,13 +301,9 @@ void CVT::getCells(std::vector<Object> &cells) {
 				vertices[ind].push_back(p.X / scale  + mid.x);
 				vertices[ind].push_back(p.Y / scale  + mid.y);
 				vll.push_back(p.X);
-				std::cerr << vll.back();
 				vll.push_back(p.Y);
-				std::cerr << " " << vll.back() << std::endl;
 			}
-			std::cerr << "Tri" << std::endl;
 			triangulate(vll, indices[ind]);
-			std::cerr << "Tri2" << std::endl;
 			cells.emplace_back(vertices[ind], indices[ind], col);
 		}
 	}

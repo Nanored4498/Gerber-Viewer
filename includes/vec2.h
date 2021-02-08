@@ -8,6 +8,11 @@ public:
 
 	inline Vec2 operator+(const Vec2 &other) const { return Vec2(x + other.x, y + other.y); }
 	inline Vec2 operator-(const Vec2 &other) const { return Vec2(x - other.x, y - other.y); }
+	inline Vec2& operator+=(const Vec2 &other) {
+		x += other.x;
+		y += other.y;
+		return *this;
+	}
 	inline Vec2& operator-=(const Vec2 &other) {
 		x -= other.x;
 		y -= other.y;
@@ -20,6 +25,8 @@ public:
 		y /= scalar;
 		return *this;
 	}
+
+	inline bool operator!=(const Vec2 &other) { return x != other.x || y != other.y; }
 };
 
 Vec2 operator*(double scale, const Vec2 &v);
