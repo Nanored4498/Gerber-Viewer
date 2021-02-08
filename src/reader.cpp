@@ -195,6 +195,11 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 					}
 				}
 				if(good) {
+					if(ap.temp_name == "O" && ap.parameters[0] == ap.parameters[1]) {
+						ap.temp_name = "C";
+						if(np == 3) ap.parameters[1] = ap.parameters[2];
+						ap.parameters.pop_back();
+					}
 					map_ap[aper_id] = pcb.apertures.size();
 					pcb.apertures.push_back(ap);
 				}
@@ -298,26 +303,17 @@ void readGerber(std::istream &in, float color0[3], PCB &pcb) {
 							for(int hc : {-1, 1}) {
 								double xc = vert ? xx : xx + hc * dhw;
 								double yc = vert ? yy + hc * dhw : yy;
-								uint ind = vertices.size()/2;
 								for(int i = 0; i <= 12; ++i) {
 									double a = (2*M_PI*i)/24 - hc*M_PI_2 + a0;
 									vertices.push_back(xc + r*cos(a));
 									vertices.push_back(yc + r*sin(a));
-									if(i < 12) {
-										indices.push_back(ind + i);
-										indices.push_back(ind + i+1);
-										indices.push_back(ind + 13);
-									}
 								}
-								vertices.push_back(xc);
-								vertices.push_back(yc);
 							}
-							indices.push_back(0);
-							indices.push_back(12);
-							indices.push_back(14);
-							indices.push_back(0);
-							indices.push_back(14);
-							indices.push_back(26);
+							for(uint i = 2; i < vertices.size()/2; ++i) {
+								indices.push_back(0);
+								indices.push_back(i-1);
+								indices.push_back(i);
+							}
 						}
 						if(!indices.empty()) pcb.objs.emplace_back(vertices, indices, color0);
 					}

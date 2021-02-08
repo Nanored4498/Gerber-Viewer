@@ -62,12 +62,17 @@ inline void addCurvedEdge(uint ind, const VD::edge_type *e, const std::vector<Se
         c = Vec2(c.x*b.x + c.y*b.y, c.x*b2.x + c.y*b2.y);
         double x0 = (e->vertex1()->x() - a.x)*b.x + (e->vertex1()->y() - a.y)*b.y;
         double x1 = (e->vertex0()->x() - a.x)*b.x + (e->vertex0()->y() - a.y)*b.y;
+		ClipperLib::IntPoint start(std::round(e->vertex1()->x()), std::round(e->vertex1()->y()));
+		ClipperLib::IntPoint end(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
         x1 -= x0;
         for(int i = 1; i < ni; ++i) {
             double x = x0 + (x1 * i) / ni;
             double dx = x - c.x;
             double y = .5 * (c.y + dx*dx/c.y);
-            p.emplace_back(std::round(a.x + x*b.x + y*b2.x)+1.e-6, std::round(a.y + x*b.y + y*b2.y)+1.e-6);
+			ClipperLib::IntPoint add(std::round(a.x + x*b.x + y*b2.x), std::round(a.y + x*b.y + y*b2.y));
+			if(std::abs(add.X - start.X) + std::abs(add.Y - start.Y) <= 3) continue;
+			if(std::abs(add.X - end.X) + std::abs(add.Y - end.Y) <= 3) continue;
+			if(p.empty() || std::abs(add.X - p.back().X) + std::abs(add.Y - p.back().Y) > 3) p.push_back(add);
         }
     }
 }
@@ -156,7 +161,7 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 	// Compute object segments
 	for(uint i = 0; i < objs.size(); ++i) {
 		std::cerr << objs[i].size() << std::endl;
-		if(objs[i].size() != 28) continue;
+		// if(objs[i].size() != 26) continue;
 		for(Vec2 &v : objs[i]) v = scale * (v - mid);
 		for(uint j = 0; j < objs[i].size(); ++j) {
 			uint k = (j+1) % objs[i].size();
@@ -259,8 +264,9 @@ void CVT::getCells(std::vector<Object> &cells) {
 		ClipperLib::Path &p = ps[0];
 		const VD::edge_type *e = vd_c.incident_edge();
 		do {
-			addCurvedEdge(ind, e, segments, p, 8);
+			addCurvedEdge(ind, e, segments, p, 4);
 			p.emplace_back(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
+			std::cerr << p.back().X << " " << p.back().Y << std::endl;
 			e = e->prev();
 		} while(e != vd_c.incident_edge());
 		std::cerr << "HERE2" << std::endl;
@@ -291,7 +297,9 @@ void CVT::getCells(std::vector<Object> &cells) {
 				vertices[ind].push_back(p.X / scale  + mid.x);
 				vertices[ind].push_back(p.Y / scale  + mid.y);
 				vll.push_back(p.X);
+				std::cerr << vll.back();
 				vll.push_back(p.Y);
+				std::cerr << " " << vll.back() << std::endl;
 			}
 			std::cerr << "Tri" << std::endl;
 			triangulate(vll, indices[ind]);
