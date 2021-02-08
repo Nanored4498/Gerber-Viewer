@@ -1,7 +1,7 @@
+#include "triangulate.h"
+
 #include <algorithm>
-#include <vector>
 #include <map>
-#include <iostream>
 
 using namespace std;
 typedef long long ll;
@@ -28,7 +28,6 @@ struct Edge {
 void triangulate(const vector<ll> &coords, vector<uint> &indices) {
 	indices.clear();
 	size_t N = coords.size()/2;
-	// cerr << "triangulate: " << N << endl;
 	const auto compY = [&](const uint i, const uint j)->bool {
 		ll yi = Y(i), yj = Y(j);
 		return yi < yj || (yi == yj && X(i) < X(j));
@@ -135,7 +134,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices) {
 			}
 		}
 	}
-	// cerr << "Monotonic decompostion done" << endl;
 	
 	uint Es = out.size();
 	for(uint i = 0; i < Es; ++i) {
@@ -160,7 +158,6 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices) {
 		}
 		order.push_back(ey1);
 		uint n = order.size();
-		// cerr << "monotone: " << n << endl;
 
 		vector<Edge*> stack = {order[0], order[1]};
 		for(uint i = 2; i+1 < n; ++i) {
@@ -233,9 +230,7 @@ void triangulate(const vector<ll> &coords, vector<uint> &indices) {
 		}
 		
 		for(Edge *e : order) e->next = nullptr;
-		// cerr << "end of monotone" << endl;
 	}
-	// cerr << "END" << endl;
 
 	for(Edge *e : out) delete e;
 }

@@ -13,20 +13,50 @@ using namespace std;
 
 const int WIDTH = 1024, HEIGHT = 768;
 float X0=1e9, X1=-1e9, Y0=1e9, Y1=-1e9;
+float cX, cY, pressX, pressY;
+bool left_pressed = false;
+float zoom = 1.f, ratio = 1.f;
 uint shaderProgram;
 default_random_engine re;
 uniform_real_distribution<float> unif(0., 1.);
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
-	int centerLocation = glGetUniformLocation(shaderProgram, "center");
-	int ratioLocation = glGetUniformLocation(shaderProgram, "ratio");
-	int zoomLocation = glGetUniformLocation(shaderProgram, "zoom");
-	float ratio = (float) width / (float) height;
-	float zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.8f;
-	glUniform2f(centerLocation, (X0+X1)/2.f, (Y0+Y1)/2.f);
-	glUniform1f(ratioLocation, ratio);
-	glUniform1f(zoomLocation, zoom);
+	ratio = (float) width / (float) height;
+	glUniform1f(glGetUniformLocation(shaderProgram, "ratio"), ratio);
 	glViewport(0, 0, width, height);
+}
+
+void getCoord(GLFWwindow* window, float &x, float &y) {
+	int W, H;
+	glfwGetWindowSize(window, &W, &H);
+	double x0, y0;
+	glfwGetCursorPos(window, &x0, &y0);
+	x = cX + (2.f*x0/W - 1.f) * zoom;
+	y = cY + (1.f - 2.f*y0/H) * zoom / ratio;
+}
+
+void mouseButtonCallBack(GLFWwindow* window, int button, int action, int mods) {
+	if(button == GLFW_MOUSE_BUTTON_LEFT) {
+		if(action == GLFW_PRESS) {
+			left_pressed = true;
+			getCoord(window, pressX, pressY);
+		} else left_pressed = false;
+	}
+}
+
+void cursorPositionCallback(GLFWwindow* window, double x, double y) {
+	if(!left_pressed) return;
+	float x2, y2;
+	getCoord(window, x2, y2);
+	cX += pressX - x2;
+	cY += pressY - y2;
+	glUniform2f(glGetUniformLocation(shaderProgram, "center"), cX, cY);
+}
+
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+	std::cerr << xoffset << " " << yoffset << std::endl;
+	zoom *= std::pow(1.1, -yoffset);
+	glUniform1f(glGetUniformLocation(shaderProgram, "zoom"), zoom);
 }
 
 int main(int argc, char* argv[]) {
@@ -52,6 +82,7 @@ int main(int argc, char* argv[]) {
 	glfwMakeContextCurrent(window);
 	if(!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
 		cerr << "Failed to initialize GLAD" << endl;
+    	glfwTerminate();
 		return 1;
 	}
 	int succes;
@@ -76,6 +107,7 @@ int main(int argc, char* argv[]) {
 	if(!succes) {
 		glGetShaderInfoLog(vertexShader, sizeof(infoLog), nullptr, infoLog);
 		cerr << "Failed to compile vertex shader:\n" << infoLog << endl;
+    	glfwTerminate();
 		return 1;
 	}
 	
@@ -94,6 +126,7 @@ int main(int argc, char* argv[]) {
 	if(!succes) {
 		glGetShaderInfoLog(fragmentShader, sizeof(infoLog), nullptr, infoLog);
 		cerr << "Failed to compile fragment shader:\n" << infoLog << endl;
+    	glfwTerminate();
 		return 1;
 	}
 
@@ -106,6 +139,7 @@ int main(int argc, char* argv[]) {
 	if(!succes) {
 		glGetProgramInfoLog(shaderProgram, sizeof(infoLog), nullptr, infoLog);
 		cerr << "Failed to link shader program:\n" << infoLog << endl;
+    	glfwTerminate();
 		return 1;
 	}
 	glDetachShader(shaderProgram, vertexShader);
@@ -137,8 +171,16 @@ int main(int argc, char* argv[]) {
 	for(const Object &o : pcb.objs) o.update_bounding_box(X0, X1, Y0, Y1);
 
 	framebufferSizeCallback(window, WIDTH, HEIGHT);
+	cX = (X0+X1)/2.f;
+	cY = (Y0+Y1)/2.f;
+	glUniform2f(glGetUniformLocation(shaderProgram, "center"), cX, cY);
+	zoom = max(X1-X0, (Y1-Y0)*ratio) / 1.8f;
+	glUniform1f(glGetUniformLocation(shaderProgram, "zoom"), zoom);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-	glClearColor(0.2, 0.25, 0.2, 1.0);
+	glfwSetCursorPosCallback(window, cursorPositionCallback);
+	glfwSetMouseButtonCallback(window, mouseButtonCallBack);
+	glfwSetScrollCallback(window, scrollCallback);
+	glClearColor(0.16, 0.2, 0.16, 1.0);
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// CVT ???
