@@ -19,26 +19,19 @@ find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 # Files #
 #-------#
 
-set(SRCS
-	main.cpp
-	object.cpp
-	reader.cpp
-	triangulate.cpp
-	cvt.cpp
-	glad.c
-)
+file(GLOB SOURCES "src/*.cpp" "src/*.c")
 
 #----------#
 # INCLUDES #
 #----------#
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/includes)
 
 #-------#
 # Build #
 #-------#
 
-add_executable(${PROJECT_NAME} ${SRCS})
+add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME}
 	glfw
 	Eigen3::Eigen
