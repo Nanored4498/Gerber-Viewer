@@ -1,13 +1,18 @@
 #pragma once
 
+#include <cmath>
+
 class Vec2 {
 public:
 	double x, y;
 
 	Vec2(double p_x=0., double p_y=0.): x(p_x), y(p_y) {}
 
+	double norm() const { return std::sqrt(x*x + y*y); }
+
 	inline Vec2 operator+(const Vec2 &other) const { return Vec2(x + other.x, y + other.y); }
 	inline Vec2 operator-(const Vec2 &other) const { return Vec2(x - other.x, y - other.y); }
+	inline Vec2 operator*(const Vec2 &other) const { return Vec2(x * other.x, y * other.y); }
 	inline Vec2& operator+=(const Vec2 &other) {
 		x += other.x;
 		y += other.y;

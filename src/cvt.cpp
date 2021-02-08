@@ -5,6 +5,8 @@
 #include "LBFGS.h"
 #include "triangulate.h"
 
+const bool printLineSearchError = true;
+
 namespace boost::polygon {
 	template<> struct geometry_concept<Vec2> { typedef point_concept type; };
 	template<> struct point_traits<Vec2> {
@@ -21,6 +23,24 @@ namespace boost::polygon {
 			return dir.to_int() ? segment.second : segment.first;
 		}
 	};
+}
+
+inline void getMomentsSeg(const Vec2 &a, const Vec2 &b, double &M0, Vec2 &M1, Vec2 &M2) {
+	Vec2 d(a.y - b.y, b.x - a.x);
+	Vec2 s = a+b;
+	M0 += d.x * s.x / 2.;
+	M1 += d * (a*s + b*b) / 6.;
+	M2 += d * (a*a + b*b) * s / 12.;
+}
+
+inline void getYMoments2(const Vec2 &a, const Vec2 &b, double l, double &M1a, double &M1b, double &M2) {
+	double dx = b.x - a.x;
+	double ta = a.x/l, tb = b.x/l;
+	double bb = b.y*b.y, ba = b.y*a.y, aa = a.y*a.y;
+	double m1b = dx * ((3.*tb+ta)*bb + 2.*(ta+tb)*ba + (3.*ta+tb)*aa) / 24.;
+	M1b += m1b;
+	M1a += dx * (bb + ba + aa) / 6. - m1b;
+	M2 += dx * (b.y+a.y) * (bb+aa) / 12.;
 }
 
 bool intersect(const Vec2 &a, const Vec2 &b, const Vec2 &u, const Vec2 &u2, double &t) {
@@ -41,40 +61,40 @@ bool intersect(const Vec2 &a, const Vec2 &b, const Vec2 &u, const Vec2 &u2, doub
 }
 
 inline void addCurvedEdge(uint ind, const VD::edge_type *e, const std::vector<Segment> &segments, ClipperLib::Path &p, int ni) {
-    if(e != nullptr && e->is_curved() && e->twin()->cell()->source_index() >= 4) {
-        Vec2 a, b, c;
-        uint ind2 = e->twin()->cell()->source_index()-4;
-        if(e->cell()->contains_point()) {
-            a = segments[ind2].first;
-            b = segments[ind2].second;
-            if(e->cell()->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_END_POINT) c = segments[ind].second;
-            else c = segments[ind].first;
-        } else {
-            a = segments[ind].first;
-            b = segments[ind].second;
-            if(e->twin()->cell()->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_END_POINT) c = segments[ind2].second;
-            else c = segments[ind2].first;
-        }
-        b -= a;
-        b /= std::sqrt(b.x*b.x + b.y*b.y);
-        Vec2 b2(-b.y, b.x);
-        c -= a;
-        c = Vec2(c.x*b.x + c.y*b.y, c.x*b2.x + c.y*b2.y);
-        double x0 = (e->vertex1()->x() - a.x)*b.x + (e->vertex1()->y() - a.y)*b.y;
-        double x1 = (e->vertex0()->x() - a.x)*b.x + (e->vertex0()->y() - a.y)*b.y;
+	if(e != nullptr && e->is_curved() && e->twin()->cell()->source_index() >= 4) {
+		Vec2 a, b, c;
+		uint ind2 = e->twin()->cell()->source_index()-4;
+		if(e->cell()->contains_point()) {
+			a = segments[ind2].first;
+			b = segments[ind2].second;
+			if(e->cell()->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_END_POINT) c = segments[ind].second;
+			else c = segments[ind].first;
+		} else {
+			a = segments[ind].first;
+			b = segments[ind].second;
+			if(e->twin()->cell()->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_END_POINT) c = segments[ind2].second;
+			else c = segments[ind2].first;
+		}
+		b -= a;
+		b /= std::sqrt(b.x*b.x + b.y*b.y);
+		Vec2 b2(-b.y, b.x);
+		c -= a;
+		c = Vec2(c.x*b.x + c.y*b.y, c.x*b2.x + c.y*b2.y);
+		double x0 = (e->vertex1()->x() - a.x)*b.x + (e->vertex1()->y() - a.y)*b.y;
+		double x1 = (e->vertex0()->x() - a.x)*b.x + (e->vertex0()->y() - a.y)*b.y;
 		ClipperLib::IntPoint start(std::round(e->vertex1()->x()), std::round(e->vertex1()->y()));
 		ClipperLib::IntPoint end(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
-        x1 -= x0;
-        for(int i = 1; i < ni; ++i) {
-            double x = x0 + (x1 * i) / ni;
-            double dx = x - c.x;
-            double y = .5 * (c.y + dx*dx/c.y);
+		x1 -= x0;
+		for(int i = 1; i < ni; ++i) {
+			double x = x0 + (x1 * i) / ni;
+			double dx = x - c.x;
+			double y = .5 * (c.y + dx*dx/c.y);
 			ClipperLib::IntPoint add(std::round(a.x + x*b.x + y*b2.x), std::round(a.y + x*b.y + y*b2.y));
 			if(std::abs(add.X - start.X) + std::abs(add.Y - start.Y) <= 3) continue;
 			if(std::abs(add.X - end.X) + std::abs(add.Y - end.Y) <= 3) continue;
 			if(p.empty() || std::abs(add.X - p.back().X) + std::abs(add.Y - p.back().Y) > 3) p.push_back(add);
-        }
-    }
+		}
+	}
 }
 
 const Vec2 CVT::points[4] = {
@@ -191,6 +211,16 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 	}
 }
 
+inline double CVT::foundError(const Eigen::VectorXd &x, Eigen::VectorXd &grad, const char* msg) {
+	if(prevF != std::numeric_limits<double>::max()) {
+		grad = x - prevX;
+		double len = grad.norm();
+		grad *= 100./len;
+		return prevF + 100.*len;
+	}
+	throw self_intersection_error(msg);
+}
+
 double CVT::operator()(const Eigen::VectorXd &x, Eigen::VectorXd &grad) {
 	double f = 0;
 	grad.setZero();
@@ -198,6 +228,91 @@ double CVT::operator()(const Eigen::VectorXd &x, Eigen::VectorXd &grad) {
 	VD vd;
 	construct_voro(x, &vd);
 
+	for(const VD::cell_type &vd_c : vd.cells()) {
+		if(vd_c.is_degenerate()) continue;
+		if(vd_c.source_category() == boost::polygon::SOURCE_CATEGORY_SINGLE_POINT) continue; // it is one of the four points added
+		uint ind = vd_c.source_index()-4;
+
+		// Create polygon cell
+		ClipperLib::Paths ps(1);
+		ClipperLib::Path &p = ps[0];
+		const VD::edge_type *e = vd_c.incident_edge();
+		int countEloop = 0;
+		do {
+			if(++ countEloop > 1000) return foundError(x, grad, "infinite looping over edges");
+			if(e->is_infinite()) return foundError(x, grad, "infinite edge");
+			addCurvedEdge(ind, e, segments, p, 8);
+			p.emplace_back(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
+			e = e->prev();
+		} while(e != vd_c.incident_edge());
+		ClipperLib::cInt area = (p[0].X - p.back().X) * (p[0].Y + p.back().Y);
+		for(uint i = 1; i < p.size(); ++i) area += (p[i].X - p[i-1].X) * (p[i].Y + p[i-1].Y);
+		if(area < 0.) return foundError(x, grad, "negative area");
+	
+		// We clip with the border
+		ClipperLib::Paths clipped;
+		ClipperLib::Clipper cl;
+		try {
+			cl.AddPaths(ps, ClipperLib::ptSubject, true);
+			cl.AddPaths(border, ClipperLib::ptClip, true);
+			cl.Execute(ClipperLib::ctIntersection, clipped, ClipperLib::pftNonZero, ClipperLib::pftNonZero);
+		} catch(const ClipperLib::clipperException &e) {
+			return foundError(x, grad, "clipper error");
+		}
+
+		Vec2 a, v;
+		double l;
+		bool isPoint = vd_c.contains_point();
+		if(isPoint) {
+			if(vd_c.source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) {
+				l = crs[ind].u;
+				a = segments[ind].first / scale + mid;
+			} else {
+				l = crs[ind].v;
+				a = segments[ind].second / scale + mid;
+			}
+		} else {
+			a = segments[ind].first / scale + mid;
+			v = segments[ind].second / scale + mid - a;
+			l = v.norm();
+			v /= l;
+		}
+
+		for(const ClipperLib::Path &P0 : clipped) {
+			size_t n = P0.size() + 1;
+			std::vector<Vec2> P;
+			P.reserve(n);
+			for(const ClipperLib::IntPoint &p : P0) P.emplace_back(p.X / scale + mid.x, p.Y / scale + mid.y);
+			P.push_back(P[0]);
+			if(isPoint) {
+				double M0 = 0.;
+				Vec2 M1(0., 0.), M2(0., 0.);
+				for(uint i = 1; i < n; ++i) getMomentsSeg(P[i], P[i-1], M0, M1, M2);
+				Vec2 add = .5 * (M2 - 2.*M1*a + M0*a*a);
+				f += add.x + add.y;
+				double gx = M0*a.x - M1.x;
+				double gy = M0*a.y - M1.y;
+				grad(crs[ind].i) += (1. - l) * gx;
+				grad(crs[ind].i+1) += (1. - l) * gy;
+				grad(crs[ind].j) += l * gx;
+				grad(crs[ind].j+1) += l * gy;
+			} else {
+				for(Vec2 &u : P) {
+					u -= a;
+					u = Vec2(v.x*u.x + v.y*u.y, -v.y*u.x + v.x*u.y);
+				}
+				double M1a = 0., M1b = 0., M2 = 0.;
+				for(uint i = 1; i < n; ++i) getYMoments2(P[i], P[i-1], l, M1a, M1b, M2);
+				f += .5 * M2;
+				double coeffI = (1. - crs[ind].u) * M1a + (1. - crs[ind].v) * M1b;
+				double coeffJ = crs[ind].u * M1a + crs[ind].v * M1b;
+				grad(crs[ind].i) += coeffI * v.y;
+				grad(crs[ind].i+1) -= coeffI * v.x;
+				grad(crs[ind].j) += coeffJ * v.y;
+				grad(crs[ind].j+1) -= coeffJ * v.x;
+			}
+		}
+	}
 		/*
 		// energy orthogonal ditance
 		h.x = e.from < 0 ? pcb->junctions[-e.from] : pcb->objs[e.from].center[1];
@@ -242,7 +357,15 @@ void CVT::solve() {
 
 	// Minimize
 	double fx;
-	solver.minimize(*this, x, fx);
+	try {
+		solver.minimize(*this, x, fx);
+	} catch(const std::runtime_error &e) {
+		if(printLineSearchError) std::cerr << "[Smoother Runtime Error]: " << e.what() << std::endl;
+	} catch(const std::logic_error &e) {
+		std::cerr << "[Smoother Logic Error]: " << e.what() << std::endl;
+	} catch(const self_intersection_error &e) {
+		std::cerr << "[Smoother Self Intersection Error]: " << e.what() << std::endl;
+	}
 
 	// Update centers
 	for(uint i = 0; i < N; ++i) pcb->objs[i/2].center[i&1] = prevX(i);
