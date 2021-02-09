@@ -40,3 +40,5 @@ public:
 };
 
 Vec2 operator*(double scale, const Vec2 &v);
+
+double dot(const Vec2 &a, const Vec2 &b);
