@@ -30,6 +30,11 @@ public:
 		y /= scalar;
 		return *this;
 	}
+	inline Vec2& operator*=(double scalar) {
+		x *= scalar;
+		y *= scalar;
+		return *this;
+	}
 
 	inline bool operator!=(const Vec2 &other) { return x != other.x || y != other.y; }
 };

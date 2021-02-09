@@ -69,5 +69,5 @@ private:
 
 	double foundError(const Eigen::VectorXd &x, Eigen::VectorXd &grad, const char* msg);
 
-    void construct_voro(const Eigen::VectorXd &x, VD *vd);
+    bool construct_voro(const Eigen::VectorXd &x, VD *vd);
 };

@@ -180,7 +180,7 @@ int main(int argc, char* argv[]) {
 	glfwSetMouseButtonCallback(window, mouseButtonCallBack);
 	glfwSetScrollCallback(window, scrollCallback);
 	glClearColor(0.16, 0.2, 0.16, 1.0);
-	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// CVT
 	vector<vector<float>> boundary {{
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
 		X1 + .05f*(X1-X0), Y0 - .05f*(Y1-Y0)
 	}};
 	CVT cvt(&pcb, std::move(boundary));
-	cvt.solve();
+	// cvt.solve();
 	vector<Object> cells;
 	cvt.getCells(cells);
 	pcb.computeEdgeObjects();

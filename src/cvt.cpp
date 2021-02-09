@@ -60,6 +60,33 @@ bool intersect(const Vec2 &a, const Vec2 &b, const Vec2 &u, const Vec2 &u2, doub
 	return false;
 }
 
+bool insideLoop(const std::vector<float> &loop, double x, double y) {
+	bool inside = false;
+	for (uint i = 0; i < loop.size(); i += 2) {
+		uint j = (i+2) % loop.size();
+		if(loop[i+1] == loop[j+1]) continue;
+		if(loop[j+1] == y) {
+			if(loop[j] > x && loop[j+1] < loop[i+1]) inside = !inside;
+		} else if(loop[i+1] == y) {
+			if(loop[i] > x && loop[j+1] > loop[i+1]) inside = !inside;
+		} else if((loop[j+1] > y) != (loop[i+1] > y)) {
+			double x2 = loop[i] + (loop[j] - loop[i]) * (y - loop[i+1]) / (loop[j+1] - loop[i+1]);
+			if(x2 > x) inside = !inside;
+		}
+	}
+	return inside;
+}
+
+bool inside(const std::vector<std::vector<float>> &boundary, double x, double y) {
+	if(insideLoop(boundary[0], x, y)) {
+		for(uint i = 1; i < boundary.size(); ++i)
+			if(insideLoop(boundary[i], x, y))
+				return false;
+		return true;
+	}
+	return false;
+}
+
 inline void addCurvedEdge(uint ind, const VD::edge_type *e, const std::vector<Segment> &segments, ClipperLib::Path &p, int ni) {
 	if(e != nullptr && e->is_curved() && e->twin()->cell()->source_index() >= 4) {
 		Vec2 a, b, c;
@@ -127,22 +154,31 @@ CVT::CVT(PCB *p_pcb, std::vector<std::vector<float>> &&p_boundary):
 		}
 		tot_area -= std::abs(hole_area);
 	}
+	mid = (border_box.min() + border_box.max()) / 2.;
+	scale = INT32_MAX / (2.5 * std::max(border_box.W(), border_box.H()));
 
+	// Compute border
+	for(uint k = 0; k < border.size(); ++k) {
+		for(uint i = 0; i < border[k].size(); ++i) {
+			border[k][i].X = scale * (boundary[k][2*i] - mid.x);
+			border[k][i].Y = scale * (boundary[k][2*i+1] - mid.y);
+		}
+	}
 }
 
-void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
+bool CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 	// Create a vector of Vec2 per object
 	std::vector<std::vector<Vec2>> objs(pcb->objs.size());
-	Box box = border_box;
 	for(uint i = 0; i < objs.size(); ++i) {
 		objs[i].reserve(pcb->objs[i].size());
 		for(uint j = 0; j < pcb->objs[i].size(); ++j) {
 			objs[i].emplace_back(x(2*i) + pcb->objs[i].getX(j), x(2*i+1) + pcb->objs[i].getY(j));
-			box.update(objs[i].back().x, objs[i].back().y);
+			if(!inside(boundary, objs[i].back().x, objs[i].back().y)) return false;
 		}
 	}
-	mid = (box.min() + box.max()) / 2.;
-	scale = INT32_MAX / (2.5 * std::max(box.W(), box.H()));
+	for(uint i = 2*objs.size(); i < x.size(); i += 2)
+		if(!inside(boundary, x(i), x(i+1)))
+			return false;
 	segments.clear();
 	crs.clear();
 
@@ -161,12 +197,13 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 			}
 			uint k = (j+1) % objs[e.from].size();
 			a = b + t * (a - b);
-			if(std::abs(std::round(scale * (a.x - objs[e.from][j].x))) + std::abs(std::round(scale * (a.y - objs[e.from][j].y))) <= 5)
+			if(std::abs(std::round(scale * (a.x - objs[e.from][j].x))) + std::abs(std::round(scale * (a.y - objs[e.from][j].y))) < 10) {
 				a = objs[e.from][j];
-			else if(std::abs(std::round(scale * (a.x - objs[e.from][k].x))) + std::abs(std::round(scale * (a.y - objs[e.from][k].y)) <= 5))
+			} else if(std::abs(std::round(scale * (a.x - objs[e.from][k].x))) + std::abs(std::round(scale * (a.y - objs[e.from][k].y))) < 10) {
 				a = objs[e.from][k];
-			else
-				objs[e.from].insert(objs[e.from].begin() + j+1, a);
+			} else {
+				objs[e.from].insert(objs[e.from].begin() + k, a);
+			}
 			u = 1. - t;
 		}
 		if(e.to >= 0) {
@@ -178,12 +215,12 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 			}
 			uint k = (j+1) % objs[e.to].size();
 			b = a + t * (b - a);
-			if(std::abs(std::round(scale * (b.x - objs[e.to][j].x))) + std::abs(std::round(scale * (b.y - objs[e.to][j].y))) <= 5)
+			if(std::abs(std::round(scale * (b.x - objs[e.to][j].x))) + std::abs(std::round(scale * (b.y - objs[e.to][j].y))) < 10)
 				b = objs[e.to][j];
-			else if(std::abs(std::round(scale * (b.x - objs[e.to][k].x))) + std::abs(std::round(scale * (b.y - objs[e.to][k].y)) <= 5))
+			else if(std::abs(std::round(scale * (b.x - objs[e.to][k].x))) + std::abs(std::round(scale * (b.y - objs[e.to][k].y))) < 10)
 				b = objs[e.to][k];
 			else
-				objs[e.to].insert(objs[e.to].begin() + j+1, b);
+				objs[e.to].insert(objs[e.to].begin() + k, b);
 			v = t + (1. - t) * u;
 		}
 		segments.emplace_back(scale * (a - mid), scale * (b - mid));
@@ -201,14 +238,7 @@ void CVT::construct_voro(const Eigen::VectorXd &x, VD *vd) {
 	}
 
 	boost::polygon::construct_voronoi(points, points+4, segments.begin(), segments.end(), vd);
-
-	// Compute border
-	for(uint k = 0; k < border.size(); ++k) {
-		for(uint i = 0; i < border[k].size(); ++i) {
-			border[k][i].X = scale * (boundary[k][2*i] - mid.x);
-			border[k][i].Y = scale * (boundary[k][2*i+1] - mid.y);
-		}
-	}
+	return true;
 }
 
 inline double CVT::foundError(const Eigen::VectorXd &x, Eigen::VectorXd &grad, const char* msg) {
@@ -226,7 +256,7 @@ double CVT::operator()(const Eigen::VectorXd &x, Eigen::VectorXd &grad) {
 	grad.setZero();
 
 	VD vd;
-	construct_voro(x, &vd);
+	if(!construct_voro(x, &vd)) return foundError(x, grad, "A point is outside");
 
 	for(const VD::cell_type &vd_c : vd.cells()) {
 		if(vd_c.is_degenerate()) continue;
@@ -344,7 +374,7 @@ void CVT::solve() {
 	param.epsilon = 1e-5;
 	param.max_iterations = 100;
 	param.m = 9;
-	param.max_linesearch = 7;
+	param.max_linesearch = 15;
 	LBFGSpp::LBFGSSolver<double> solver(param);
 
 	// start
@@ -396,7 +426,7 @@ void CVT::getCells(std::vector<Object> &cells) {
 		ClipperLib::Path &p = ps[0];
 		const VD::edge_type *e = vd_c.incident_edge();
 		do {
-			addCurvedEdge(ind, e, segments, p, 4);
+			// addCurvedEdge(ind, e, segments, p, 4);
 			p.emplace_back(std::round(e->vertex0()->x()), std::round(e->vertex0()->y()));
 			e = e->prev();
 		} while(e != vd_c.incident_edge());
@@ -429,5 +459,22 @@ void CVT::getCells(std::vector<Object> &cells) {
 			triangulate(vll, indices[ind]);
 			cells.emplace_back(vertices[ind], indices[ind], col);
 		}
+	}
+
+	for(const Segment &s : segments) {
+		Vec2 a = s.first / scale + mid;
+		Vec2 b = s.second / scale + mid;
+		Vec2 v = b-a;
+		v *= .06 / v.norm();
+		std::swap(v.x, v.y);
+		v.x = -v.x;
+		std::vector<float> vert;
+		vert.push_back(a.x - v.x); vert.push_back(a.y - v.y);
+		vert.push_back(a.x + v.x); vert.push_back(a.y + v.y);
+		vert.push_back(b.x + v.x); vert.push_back(b.y + v.y);
+		vert.push_back(b.x - v.x); vert.push_back(b.y - v.y);
+		std::vector<uint> inds {0, 1, 2, 0, 2, 3};
+		float col[3] {0., 0., 0.};
+		cells.emplace_back(vert, inds, col);
 	}
 }
